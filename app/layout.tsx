@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
 
-import Header from "@/components/header";
-import Footer from "@/components/footer";
 import GlowBackground from "@/components/ui/GlowBackground";
 
 export const metadata: Metadata = {
@@ -57,11 +55,7 @@ export default function RootLayout({
 
         <GlowBackground />
 
-        <Header />
-
         {children}
-
-        <Footer />
 
       </body>
     </html>

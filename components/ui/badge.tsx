@@ -1,22 +1,48 @@
+import { ReactNode } from "react";
+
+type BadgeColor = "purple" | "orange" | "blue";
+type BadgeVariant =
+  | "default"
+  | "info"
+  | "success"
+  | "warning"
+  | "danger"
+  | "primary"
+  | "secondary";
+
 interface BadgeProps {
-  children: React.ReactNode;
-  color?: "purple" | "orange" | "blue";
+  children: ReactNode;
+  color?: BadgeColor;
+  variant?: BadgeVariant;
+  className?: string;
 }
 
-export default function Badge({
+const colorStyles: Record<BadgeColor, string> = {
+  purple: "bg-purple-600/20 text-purple-300 border border-purple-500/30",
+  orange: "bg-orange-500/20 text-orange-300 border border-orange-500/30",
+  blue: "bg-blue-500/20 text-blue-300 border border-blue-500/30",
+};
+
+const variantStyles: Record<BadgeVariant, string> = {
+  default: "bg-purple-600/20 text-purple-300 border border-purple-500/30",
+  info: "bg-blue-500/20 text-blue-300 border border-blue-500/30",
+  success: "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30",
+  warning: "bg-amber-500/20 text-amber-300 border border-amber-500/30",
+  danger: "bg-red-500/20 text-red-300 border border-red-500/30",
+  primary: "bg-purple-600/20 text-purple-300 border border-purple-500/30",
+  secondary: "bg-white/10 text-zinc-300 border border-white/20",
+};
+
+export function Badge({
   children,
-  color = "purple",
+  color,
+  variant,
+  className = "",
 }: BadgeProps) {
-  const styles = {
-    purple:
-      "bg-purple-600/20 text-purple-300 border border-purple-500/30",
-
-    orange:
-      "bg-orange-500/20 text-orange-300 border border-orange-500/30",
-
-    blue:
-      "bg-blue-500/20 text-blue-300 border border-blue-500/30",
-  };
+  // `variant` (dashboard usage) takes precedence; otherwise fall back to `color` (marketing usage).
+  const styles = variant
+    ? variantStyles[variant]
+    : colorStyles[color ?? "purple"];
 
   return (
     <span
@@ -29,10 +55,13 @@ export default function Badge({
       text-sm
       font-semibold
       backdrop-blur-md
-      ${styles[color]}
+      ${styles}
+      ${className}
       `}
     >
       {children}
     </span>
   );
 }
+
+export default Badge;
