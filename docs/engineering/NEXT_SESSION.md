@@ -70,7 +70,7 @@ Gemini Code Assist
 
 RF-005
 
-Enterprise Pricing Center
+OTO 2 (Agency License)
 
 Status
 
@@ -82,19 +82,41 @@ HIGH
 
 Reason
 
-This becomes the central upgrade page for:
-
-Free users
-
-Paid users
-
-Agency users
-
-VIP users
+The third upsell in the funnel, presented after the PRO upgrade. This offer provides an Agency License for teams and client work.
 
 Future Order Bump
 
 Future OTO Pages
+
+---
+
+RF-005.5
+
+Enterprise Offer Engine
+
+Completed
+
+---
+
+RF-006
+
+Enterprise Order Bump
+
+Completed
+
+---
+
+RF-007
+
+OTO 1 (ReelForge PRO)
+
+Completed
+
+---
+
+RF-007.5
+
+Revenue Funnel QA & Integration Review
 
 Future Billing
 
@@ -134,25 +156,29 @@ Completed
 
 ---
 
+RF-005
+
+Enterprise Pricing Center
+
+Completed
+
+---
+
 # WHAT WAS COMPLETED TODAY
 
 The project architecture has been stabilized.
 
-Completed:
+Completed Today:
 
-Enterprise Design System
+RF-005 - Enterprise Pricing Center
 
-Premium Landing Page
+Centralized Pricing Configuration
 
-Route-based Layout System
+Reusable Pricing Components
 
-Sales Funnel Framework
+Enterprise Pricing Page
 
-Marketing Layout
-
-Dashboard Layout
-
-Authentication Layout
+RF-005.5 - Enterprise Offer Engine
 
 Shared Design Tokens
 
@@ -230,29 +256,11 @@ Unless the engineering ticket specifically requires them.
 
 # CURRENT GOAL
 
-Build
-
-Enterprise Pricing Center
+Build the OTO 2 page.
 
 Requirements
 
-Use Enterprise Design System.
-
-Use Funnel Framework.
-
-Create pricing configuration.
-
-Do not hardcode plans.
-
-Do not integrate payments yet.
-
-Do not redesign landing page.
-
-Do not modify dashboard.
-
-Do not modify authentication.
-
-Do not inspect unrelated folders.
+Reuse the Sales Funnel Framework and Offer Engine.
 
 ---
 
@@ -260,15 +268,7 @@ Do not inspect unrelated folders.
 
 Immediately continue with:
 
-RF-006
-
-Order Bump
-
-Then
-
-RF-007
-
-OTO 1
+RF-008
 
 Then
 
