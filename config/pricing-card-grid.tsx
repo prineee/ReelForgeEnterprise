@@ -1,7 +1,7 @@
 import { CheckIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { GlassCard } from "@/components/ui/glass-card";
+import { GlassCard } from "@/components/ui";
 import { PRICING_PLANS, getPlanHighlights } from "@/config/pricing";
 import Link from "next/link";
 
@@ -17,7 +17,7 @@ export function PricingCardGrid() {
               ? "border-orange-500/50 ring-2 ring-orange-500/80"
               : "border-slate-800"
           )}
-          glow={plan.recommended}
+          
         >
           <div className="flex-1 p-6">
             {plan.badge && (
@@ -53,9 +53,11 @@ export function PricingCardGrid() {
           </div>
 
           <div className="p-6 pt-0">
-            <Button asChild className="w-full" size="lg">
-              <Link href={plan.purchaseUrl}>{plan.ctaText ?? "Get Started"}</Link>
-            </Button>
+           <Link href={plan.purchaseUrl} className="block">
+  <Button className="w-full" size="lg">
+    {plan.ctaText ?? "Get Started"}
+  </Button>
+</Link>
           </div>
         </GlassCard>
       ))}

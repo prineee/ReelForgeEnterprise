@@ -1,19 +1,13 @@
-import { FunnelCta } from "@/components/funnel";
+import { CTASection } from "@/components/ui";
 import { RECOMMENDED_PLAN } from "@/config/pricing";
 
-/**
- * Renders the final call-to-action section for the pricing page.
- * It's a server component that fetches its data directly from the
- * centralized pricing configuration.
- */
 export function PricingCTA() {
   return (
-    <FunnelCta
+    <CTASection
       title="Ready to Create at the Speed of Thought?"
-      description={`Join thousands of creators and businesses scaling their video output with ReelForge. Get lifetime access to the ${RECOMMENDED_PLAN.name} plan today.`}
-      ctaText={`Upgrade to ${RECOMMENDED_PLAN.name}`}
-      ctaHref={RECOMMENDED_PLAN.purchaseUrl}
-      variant="final"
+      subtitle={`Join thousands of creators and businesses scaling their video output with ReelForge. Get lifetime access to the ${RECOMMENDED_PLAN.name} plan today.`}
+      primaryLabel={`Upgrade to ${RECOMMENDED_PLAN.name}`}
+      primaryHref={RECOMMENDED_PLAN.purchaseUrl}
     />
   );
 }

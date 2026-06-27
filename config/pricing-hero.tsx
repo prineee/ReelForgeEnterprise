@@ -1,16 +1,18 @@
-import { FunnelHero } from "@/components/funnel";
+import { OfferHero } from "@/components/funnel";
+import { RECOMMENDED_PLAN } from "@/config/pricing";
 
-/**
- * Renders the hero section for the main pricing page.
- */
 export function PricingHero() {
   return (
-    <FunnelHero
+    <OfferHero
+      eyebrow="No subscription needed"
       title="Choose Your Plan"
-      description="Join thousands of creators who trust ReelForge to automate their video production. All plans include lifetime access and a 30-day money-back guarantee."
-      pillText="No subscription needed"
-      className="max-w-3xl"
-      titleClassName="text-5xl"
+      subtitle="Join thousands of creators who trust ReelForge to automate their video production. All plans include lifetime access and a 30-day money-back guarantee."
+      price={RECOMMENDED_PLAN.price}
+      originalPrice={RECOMMENDED_PLAN.originalPrice}
+      savings={RECOMMENDED_PLAN.savings}
+      ctaText={RECOMMENDED_PLAN.ctaText ?? "Get Instant Access"}
+      ctaHref={RECOMMENDED_PLAN.purchaseUrl}
+      guaranteeNote="30-Day Money-Back Guarantee"
     />
   );
 }

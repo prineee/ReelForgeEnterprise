@@ -1,6 +1,5 @@
-import { ReactNode } from "react";
+import type { ReactNode } from "react";
 import Container from "../shared/Container";
-
 interface Props {
   children: ReactNode;
   className?: string;

@@ -1,4 +1,4 @@
-import { FunnelComparisonTable } from "@/components/funnel";
+import { PricingComparisonTable } from "@/components/funnel";
 import { getComparisonPlans } from "@/config/pricing";
 
 /**
@@ -7,5 +7,5 @@ import { getComparisonPlans } from "@/config/pricing";
  * centralized pricing configuration.
  */
 export function PricingComparison() {
-  return <FunnelComparisonTable plans={getComparisonPlans()} />;
+  return <PricingComparisonTable plans={getComparisonPlans()} />;
 }

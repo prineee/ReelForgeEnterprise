@@ -1,5 +1,9 @@
 {
   "compilerOptions": {
+     "baseUrl": ".",
+    "types": [
+      "node"
+    ],
     "lib": [
       "dom",
       "dom.iterable",
@@ -38,6 +42,8 @@
   "exclude": [
     "node_modules",
     "reel-forge",
-    "worker"
+    "worker",
+     "docs",
+     "exclude"
   ]
 }

@@ -1,14 +1,14 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
-import { type NextRequest, type NextResponse } from 'next/server';
 import { Database } from '@/types/supabase';
+import { NextRequest, NextResponse } from "next/server";
 
 export const createClient = (request: NextRequest) => {
   // Create an unmodified response
-  let response = {
-    request: {
-      headers: request.headers,
-    },
-  } as NextResponse;
+ let response = NextResponse.next({
+  request: {
+    headers: request.headers,
+  },
+});
 
   const supabase = createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
