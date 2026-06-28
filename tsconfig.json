@@ -1,14 +1,10 @@
 {
   "compilerOptions": {
-     "baseUrl": ".",
-    "types": [
-      "node"
-    ],
-    "lib": [
-      "dom",
-      "dom.iterable",
-      "esnext"
-    ],
+    "paths": {
+      "@/*": ["./*"]
+    },
+    "types": ["node"],
+    "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -25,11 +21,6 @@
         "name": "next"
       }
     ],
-    "paths": {
-      "@/*": [
-        "./*"
-      ]
-    },
     "target": "ES2017"
   },
   "include": [
@@ -43,7 +34,7 @@
     "node_modules",
     "reel-forge",
     "worker",
-     "docs",
-     "exclude"
+    "docs",
+    "exclude"
   ]
 }
