@@ -18,13 +18,13 @@ export async function GET() {
       );
     }
 
-    const { data: user, error: userError } = await supabase
+    const { data: user } = await supabase
       .from("users")
       .select("id")
       .eq("email", session.user.email)
       .single();
 
-    if (userError || !user) {
+    if (!user) {
       return NextResponse.json(
         { error: "User not found" },
         { status: 404 }
@@ -32,7 +32,7 @@ export async function GET() {
     }
 
     const { data, error } = await supabase
-      .from("affiliate_payouts")
+      .from("affiliate_sales")
       .select("*")
       .eq("affiliate_id", user.id)
       .order("created_at", {
@@ -48,7 +48,7 @@ export async function GET() {
     console.error(error);
 
     return NextResponse.json(
-      { error: "Failed to load payouts" },
+      { error: "Failed to load sales" },
       { status: 500 }
     );
   }

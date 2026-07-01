@@ -1,11 +1,10 @@
-/**
+import { CheckIcon } from "lucide-react";/**
  * @file config/oto-1.ts
  * @description All marketing and UI content for the OTO1 (ReelForge PRO) page.
  */
 
-import { CheckIcon } from "lucide-react";
-import { FAQAccordionItem, FunnelTestimonial } from "@/components/funnel";
-
+type FAQAccordionItem = any;
+type FunnelTestimonial = any;
 export const OTO1_HERO = {
   pillText: "Exclusive Upgrade Offer",
   title: "You've Unlocked The Next Level: ReelForge PRO",

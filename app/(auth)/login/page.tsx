@@ -33,10 +33,12 @@ export default function LoginPage() {
   async function handleGoogleLogin() {
     setGoogleLoading(true)
     setError('')
+    const callbackUrl = `${window.location.origin}/api/auth/callback?next=/dashboard`
+
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: callbackUrl,
       },
     })
     if (error) {

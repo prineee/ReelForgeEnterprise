@@ -33,7 +33,6 @@ export default function BillingClient({ currentPlan, userEmail }: Props) {
   const [loading, setLoading] = useState<string | null>(null)
   const [toast, setToast]     = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
 
-  // Handle Stripe redirect success / cancel banners
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     if (params.get('stripe') === 'success') {
@@ -45,6 +44,24 @@ export default function BillingClient({ currentPlan, userEmail }: Props) {
       window.history.replaceState({}, '', '/billing')
     }
   }, [router])
+
+  const handleStripe = useCallback(async (plan: Plan) => {
+    setLoading(`${plan.key}-stripe`)
+    setToast(null)
+    try {
+      const res = await fetch('/api/payment/stripe/create-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan: plan.key }),
+      })
+      if (!res.ok) throw new Error((await res.json()).error ?? 'Session creation failed')
+      const { url } = await res.json()
+      window.location.href = url
+    } catch (err) {
+      setToast({ type: 'error', msg: err instanceof Error ? err.message : 'Payment failed' })
+      setLoading(null)
+    }
+  }, [])
 
   const handleRazorpay = useCallback(async (plan: Plan) => {
     setLoading(`${plan.key}-rzp`)
@@ -142,24 +159,6 @@ export default function BillingClient({ currentPlan, userEmail }: Props) {
       setLoading(null)
     }
   }, [router, userEmail])
-
-  const handleStripe = useCallback(async (plan: Plan) => {
-    setLoading(`${plan.key}-stripe`)
-    setToast(null)
-    try {
-      const res = await fetch('/api/payment/stripe/create-session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plan: plan.key }),
-      })
-      if (!res.ok) throw new Error((await res.json()).error ?? 'Session creation failed')
-      const { url } = await res.json()
-      window.location.href = url
-    } catch (err) {
-      setToast({ type: 'error', msg: err instanceof Error ? err.message : 'Payment failed' })
-      setLoading(null)
-    }
-  }, [])
 
   const anyLoading = !!loading
 

@@ -1,6 +1,5 @@
 'use client'
-
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Video, Eye, EyeOff, Loader2, Chrome, Check } from 'lucide-react'
@@ -18,16 +17,35 @@ export default function RegisterPage() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const params = new URLSearchParams(
+      window.location.search
+    );
+
+    const ref = params.get('ref');
+
+    if (ref) {
+      localStorage.setItem(
+        'affiliate_ref',
+        ref
+      );
+    }
+  }, []);
+
   async function handleRegister(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
     setError('')
+    const callbackUrl = `${window.location.origin}/api/auth/callback?next=/dashboard`
+
     const { error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: { full_name: name },
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        emailRedirectTo: callbackUrl,
       },
     })
     if (error) {
@@ -42,9 +60,11 @@ export default function RegisterPage() {
   async function handleGoogleLogin() {
     setGoogleLoading(true)
     setError('')
+    const callbackUrl = `${window.location.origin}/api/auth/callback?next=/dashboard`
+
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: `${window.location.origin}/auth/callback` },
+      options: { redirectTo: callbackUrl },
     })
     if (error) {
       setError(error.message)

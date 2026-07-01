@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
+import ReferralTracker from "@/components/affiliate/ReferralTracker";
 import { createClient } from '@/lib/supabase/server'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -48,7 +49,9 @@ export default async function DashboardPage() {
   }
 
   return (
-    <div className="space-y-8 max-w-7xl">
+      <>
+     <ReferralTracker />
+        <div className="space-y-8 max-w-7xl">
       {/* Welcome */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
@@ -213,5 +216,6 @@ export default async function DashboardPage() {
         )}
       </div>
     </div>
-  )
+</>
+)
 }

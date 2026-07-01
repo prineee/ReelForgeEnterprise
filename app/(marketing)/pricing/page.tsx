@@ -1,3 +1,4 @@
+import InternationalPricing from "@/components/pricing/InternationalPricing";
 import type { Metadata } from "next";
 import { CTASection } from "@/components/ui";
 import {
@@ -122,7 +123,7 @@ export default function PricingPage() {
         primaryHref={RECOMMENDED_PLAN.purchaseUrl}
         secondaryLabel="Compare plans"
         secondaryHref="#pricing"
-      />
+      /><InternationalPricing />
     </main>
   );
 }
