@@ -1,33 +1,18 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-import { getServerSession } from "next-auth";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { createClient } from "@/lib/supabase/server";
 
 export async function GET() {
   try {
-    const session = await getServerSession();
+    const supabase = createClient();
 
-    if (!session?.user?.email) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
-    }
-
-    const { data: user } = await supabase
-      .from("users")
-      .select("id")
-      .eq("email", session.user.email)
-      .single();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
     if (!user) {
       return NextResponse.json(
-        { error: "User not found" },
-        { status: 404 }
+        { error: "Unauthorized" },
+        { status: 401 }
       );
     }
 
@@ -37,17 +22,26 @@ export async function GET() {
       await Promise.all([
         supabase
           .from("affiliate_clicks")
-          .select("*", { count: "exact", head: true })
+          .select("*", {
+            count: "exact",
+            head: true,
+          })
           .eq("affiliate_id", affiliateId),
 
         supabase
           .from("user_referrals")
-          .select("*", { count: "exact", head: true })
+          .select("*", {
+            count: "exact",
+            head: true,
+          })
           .eq("affiliate_id", affiliateId),
 
         supabase
           .from("affiliate_sales")
-          .select("*", { count: "exact", head: true })
+          .select("*", {
+            count: "exact",
+            head: true,
+          })
           .eq("affiliate_id", affiliateId),
       ]);
 
@@ -61,25 +55,34 @@ export async function GET() {
       .select("amount,status")
       .eq("affiliate_id", affiliateId);
 
-    const totalEarnings =
-      earnings?.reduce(
-        (sum, s) => sum + Number(s.commission_amount || 0),
-        0
-      ) || 0;
+   const totalEarnings =
+  ((earnings as any[]) ?? []).reduce(
+    (sum: number, s: any) =>
+      sum + Number(s.commission_amount || 0),
+    0
+  );
 
-    const pendingPayout =
-      payouts
-        ?.filter((p) => p.status === "pending")
-        .reduce((sum, p) => sum + Number(p.amount || 0), 0) || 0;
+const pendingPayout =
+  ((payouts as any[]) ?? [])
+    .filter((p: any) => p.status === "pending")
+    .reduce(
+      (sum: number, p: any) =>
+        sum + Number(p.amount || 0),
+      0
+    );
 
-    const paidPayout =
-      payouts
-        ?.filter((p) => p.status === "paid")
-        .reduce((sum, p) => sum + Number(p.amount || 0), 0) || 0;
+const paidPayout =
+  ((payouts as any[]) ?? [])
+    .filter((p: any) => p.status === "paid")
+    .reduce(
+      (sum: number, p: any) =>
+        sum + Number(p.amount || 0),
+      0
+    );
 
     const conversionRate =
       clicks && clicks > 0
-        ? ((sales || 0) / clicks) * 100
+        ? (((sales || 0) / clicks) * 100)
         : 0;
 
     return NextResponse.json({
@@ -88,8 +91,9 @@ export async function GET() {
       totalSales: sales || 0,
       totalEarnings,
       pendingPayout,
-      paidPayout,
-      conversionRate: Number(conversionRate.toFixed(2)),
+      conversionRate: Number(
+        conversionRate.toFixed(2)
+      ),
     });
   } catch (error) {
     console.error(error);
