@@ -48,7 +48,7 @@ console.log("USER:", session.user.id);
           .from("affiliates") as any)
           .select("id")
           .eq("referral_code", refCode)
-          .single();
+          .maybesingle();
 
       if (affiliate) {
         const { data: existing } =
@@ -59,7 +59,7 @@ console.log("USER:", session.user.id);
               "user_id",
               session.user.id
             )
-            .single();
+            .maybesingle();
 
         if (!existing) {
           await (admin

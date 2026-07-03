@@ -1,69 +1,106 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-export async function POST(request: Request) {
+export async function POST(
+  request: Request
+) {
   try {
-    const supabase = createClient();
-    const admin = createAdminClient();
+    const admin =
+      createAdminClient();
 
     const {
-      data: { user },
-    } = await supabase.auth.getUser();
+      referralCode,
+      userId,
+    } = await request.json();
+    console.log("BODY", referralCode, userId);
 
-    if (!user) {
+    if (
+      !referralCode ||
+      !userId
+    ) {
       return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
-    }
-
-    const { referralCode } = await request.json();
-
-    if (!referralCode) {
-      return NextResponse.json(
-        { error: "No referral code" },
-        { status: 400 }
+        {
+          error:
+            "Referral code and user id required",
+        },
+        {
+          status: 400,
+        }
       );
     }
 
     const affiliates =
-      admin.from("affiliates") as any;
+      admin.from(
+        "affiliates"
+      ) as any;
 
-    const { data: affiliate } =
-      await affiliates
-        .select("id")
-        .eq("referral_code", referralCode)
-        .single();
+    const {
+      data: affiliate,
+      error: affiliateError,
+    } = await affiliates
+      .select("id")
+      .eq(
+        "referral_code",
+        referralCode
+      )
+      .single(); console.log("AFFILIATE", affiliate);
 
-    if (!affiliate) {
+    if (
+      affiliateError ||
+      !affiliate
+    ) {
       return NextResponse.json(
-        { error: "Invalid code" },
-        { status: 404 }
+        {
+          error:
+            "Invalid referral code",
+        },
+        {
+          status: 404,
+        }
       );
     }
 
     const referrals =
-      admin.from("user_referrals") as any;
+      admin.from(
+        "user_referrals"
+      ) as any;
 
-    await referrals.upsert(
-      {
-        user_id: user.id,
-        affiliate_id: affiliate.id,
-      },
-      {
-        onConflict: "user_id",
-      }
-    );
+    const {
+      data: existing,
+    } = await referrals
+      .select("user_id")
+      .eq(
+        "user_id",
+        userId
+      )
+      .maybeSingle();
+
+    if (!existing) {
+     console.log("INSERTING", {
+  user_id: userId,
+  affiliate_id: affiliate.id,
+});console.log("INSERTING REFERRAL", userId, affiliate.id);
+      await referrals.insert({
+        user_id: userId,
+        affiliate_id:
+          affiliate.id,
+      });
+    }
 
     const users =
-      admin.from("users") as any;
+      admin.from(
+        "users"
+      ) as any;
 
     await users
       .update({
-        referred_by: referralCode,
+        referred_by:
+          referralCode,
       })
-      .eq("id", user.id);
+      .eq(
+        "id",
+        userId
+      );
 
     return NextResponse.json({
       success: true,
@@ -76,7 +113,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json(
       {
-        error: "Internal Server Error",
+        error:
+          "Internal Server Error",
       },
       {
         status: 500,

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
-const MIN_PAYOUT = 500;
+const MIN_PAYOUT = 5;
 
 export async function POST() {
   try {

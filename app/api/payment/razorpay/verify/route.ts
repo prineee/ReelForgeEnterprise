@@ -84,16 +84,95 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Database update failed' }, { status: 500 })
   }
 
-  // Credit 30% affiliate commission if this user was referred
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (admin.rpc as any)('credit_affiliate_commission', {
-      p_user_id:        user.id,
-      p_payment_amount: planData.priceUSD,
-    })
-  } catch {
-    // Non-fatal
-  }
+  // Credit affiliate commission if this user was referred
+try {
+  const referrals =
+    admin.from("user_referrals") as any;
 
-  return NextResponse.json({ success: true, plan: planData.dbPlan, credits })
+  const affiliates =
+    admin.from("affiliates") as any;
+
+  const sales =
+    admin.from("affiliate_sales") as any;
+
+  const { data: referral } =
+    await referrals
+      .select("affiliate_id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+  if (referral?.affiliate_id) {
+    let rate = 30;
+
+    switch (String(planData.dbPlan)) {
+      case "starter":
+        rate = 60;
+        break;
+
+      case "pro":
+        rate = 40;
+        break;
+
+      case "enterprise":
+        rate = 50;
+        break;
+    }
+
+    const commission =
+      (Number(planData.priceINR) * rate) /
+      100;
+
+    await sales.insert({
+      affiliate_id:
+        referral.affiliate_id,
+      customer_email:
+        user.email,
+      order_id:
+        razorpay_payment_id,
+      plan_name:
+        planData.dbPlan,
+      sale_amount:
+        planData.priceINR,
+      commission_rate:
+        rate,
+      commission_amount:
+        commission,
+      currency: "INR",
+      status: "approved",
+    });
+
+    const {
+      data: affiliate,
+    } = await affiliates
+      .select("earnings")
+      .eq(
+        "id",
+        referral.affiliate_id
+      )
+      .single();
+
+    await affiliates
+      .update({
+        earnings:
+          Number(
+            affiliate?.earnings || 0
+          ) + commission,
+      })
+      .eq(
+        "id",
+        referral.affiliate_id
+      );
+  }
+} catch (err) {
+  console.error(
+    "Affiliate commission error:",
+    err
+  );
+}
+
+return NextResponse.json({
+  success: true,
+  plan: planData.dbPlan,
+  credits,
+});
 }
