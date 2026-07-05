@@ -120,7 +120,7 @@ export default function AffiliateDashboardPage() {
               {card.title}
             </p>
 
-            <h2 className="text-3xl font-bold mt-2">
+            <h2 className="text-3xl font-bold mt-2 text-black">
               {card.value}
             </h2>
           </div>

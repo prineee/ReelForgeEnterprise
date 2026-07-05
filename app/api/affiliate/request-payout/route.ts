@@ -1,3 +1,4 @@
+import { createAdminClient } from "@/lib/supabase/admin";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
@@ -6,6 +7,7 @@ const MIN_PAYOUT = 5;
 export async function POST() {
   try {
     const supabase = createClient();
+const admin = createAdminClient();
 
     const {
       data: { user },
@@ -18,32 +20,78 @@ export async function POST() {
       );
     }
 
-    const { data: sales } = await supabase
-      .from("affiliate_sales")
-      .select("commission_amount")
-      .eq("affiliate_id", user.id);
+   const { data: affiliate } =
+  await (
+    supabase
+      .from("affiliates") as any
+  )
+    .select("id")
+    .eq("user_id", user.id)
+    .single();
 
-    const { data: payouts } = await supabase
-      .from("affiliate_payouts")
-      .select("amount,status")
-      .eq("affiliate_id", user.id);
-
-  const earnings =
-  ((sales as any[]) ?? []).reduce(
-    (sum: number, s: any) =>
-      sum + Number(s.commission_amount || 0),
-    0
+if (!affiliate) {
+  return NextResponse.json(
+    { error: "Affiliate not found" },
+    { status: 404 }
   );
+}
 
-const alreadyPaid =
-  ((payouts as any[]) ?? []).reduce(
-    (sum: number, p: any) =>
-      sum + Number(p.amount || 0),
-    0
-  );
+const affiliateId =
+  (affiliate as any).id;
+    const { data: sales } =
+      await admin
+        .from("affiliate_sales")
+        .select("commission_amount")
+        .eq(
+          "affiliate_id",
+          affiliateId
+        );
+
+    const { data: payouts } =
+      await admin
+        .from("affiliate_payouts")
+        .select("amount,status")
+        .eq(
+          "affiliate_id",
+          affiliateId
+        );
+
+    const earnings =
+      ((sales as any[]) ?? [])
+        .reduce(
+          (
+            sum: number,
+            s: any
+          ) =>
+            sum +
+            Number(
+              s.commission_amount ||
+                0
+            ),
+          0
+        );
+
+    const alreadyPaid =
+      ((payouts as any[]) ??
+        []).reduce(
+        (
+          sum: number,
+          p: any
+        ) =>
+          sum +
+          Number(
+            p.amount || 0
+          ),
+        0
+      );
 
     const available =
       earnings - alreadyPaid;
+      console.log("Affiliate ID:", affiliateId);
+console.log("Sales:", sales);
+console.log("Payouts:", payouts);
+console.log("Earnings:", earnings);
+console.log("Available:", available);
 
     if (available < MIN_PAYOUT) {
       return NextResponse.json(
@@ -55,14 +103,18 @@ const alreadyPaid =
       );
     }
 
-    
     const { error } = await (
-  supabase.from("affiliate_payouts") as any
-).insert({
-  affiliate_id: user.id,
-  amount: available,
-  status: "pending",
-});
+      admin.from(
+        "affiliate_payouts"
+      ) as any
+    ).insert({
+      affiliate_id:
+        affiliateId,
+      amount: available,
+      currency: "INR",
+      status: "pending",
+    });
+
     if (error) {
       throw error;
     }
@@ -74,8 +126,12 @@ const alreadyPaid =
     console.error(error);
 
     return NextResponse.json(
-      { error: "Request failed" },
-      { status: 500 }
+      {
+        error: "Request failed",
+      },
+      {
+        status: 500,
+      }
     );
   }
 }
