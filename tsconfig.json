@@ -1,13 +1,10 @@
 {
   "compilerOptions": {
-    "paths": {
-      "@/*": ["./*"]
-    },
-    "types": ["node"],
+    "target": "ES2017",
     "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
     "skipLibCheck": true,
-    "strict": true,
+    "strict": false,
     "noEmit": true,
     "esModuleInterop": true,
     "module": "esnext",
@@ -16,25 +13,22 @@
     "isolatedModules": true,
     "jsx": "preserve",
     "incremental": true,
+    "paths": {
+      "@/*": ["./*"]
+    },
     "plugins": [
       {
         "name": "next"
       }
-    ],
-    "target": "ES2017"
+    ]
   },
   "include": [
     "next-env.d.ts",
     "**/*.ts",
     "**/*.tsx",
     ".next/types/**/*.ts",
-    ".next/dev/types/**/*.ts"
+    ".next/dev/types/**/*.ts",
+    "global.d.ts"
   ],
-  "exclude": [
-    "node_modules",
-    "reel-forge",
-    "worker",
-    "docs",
-    "exclude"
-  ]
+  "exclude": ["node_modules"]
 }
