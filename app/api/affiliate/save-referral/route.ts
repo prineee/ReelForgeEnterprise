@@ -12,7 +12,6 @@ export async function POST(
       referralCode,
       userId,
     } = await request.json();
-    console.log("BODY", referralCode, userId);
 
     if (
       !referralCode ||
@@ -29,21 +28,20 @@ export async function POST(
       );
     }
 
-    const affiliates =
-      admin.from(
-        "affiliates"
-      ) as any;
-
     const {
       data: affiliate,
       error: affiliateError,
-    } = await affiliates
-      .select("id")
+    } = await (
+      admin.from(
+        "affiliates"
+      ) as any
+    )
+      .select("*")
       .eq(
         "referral_code",
         referralCode
       )
-      .single(); console.log("AFFILIATE", affiliate);
+      .single();
 
     if (
       affiliateError ||
@@ -60,47 +58,103 @@ export async function POST(
       );
     }
 
-    const referrals =
-      admin.from(
-        "user_referrals"
-      ) as any;
-
     const {
       data: existing,
-    } = await referrals
-      .select("user_id")
+    } = await (
+      admin.from(
+        "affiliate_referrals"
+      ) as any
+    )
+      .select("id")
       .eq(
-        "user_id",
+        "referred_user_id",
         userId
       )
       .maybeSingle();
 
     if (!existing) {
-     console.log("INSERTING", {
-  user_id: userId,
-  affiliate_id: affiliate.id,
-});console.log("INSERTING REFERRAL", userId, affiliate.id);
-      await referrals.insert({
-        user_id: userId,
+      await (
+        admin.from(
+          "affiliate_referrals"
+        ) as any
+      ).insert({
         affiliate_id:
           affiliate.id,
+        referred_user_id:
+          userId,
+        commission:
+          affiliate.commission ||
+          30,
+        status:
+          "approved",
       });
+
+      await (
+        admin.from(
+          "affiliate_commissions"
+        ) as any
+      ).insert({
+        affiliate_id:
+          affiliate.id,
+        referred_user_id:
+          userId,
+        amount:
+          affiliate.earnings ||
+          6,
+        status:
+          "approved",
+      });
+
+      const {
+        data: stats,
+      } = await (
+        admin.from(
+          "affiliate_stats"
+        ) as any
+      )
+        .select("*")
+        .eq(
+          "affiliate_id",
+          affiliate.id
+        )
+        .maybeSingle();
+
+      if (stats) {
+        await (
+          admin.from(
+            "affiliate_stats"
+          ) as any
+        )
+          .update({
+            total_referrals:
+              (stats.total_referrals ||
+                0) + 1,
+            total_earnings:
+              (stats.total_earnings ||
+                0) +
+              (affiliate.earnings ||
+                6),
+          })
+          .eq(
+            "affiliate_id",
+            affiliate.id
+          );
+      } else {
+        await (
+          admin.from(
+            "affiliate_stats"
+          ) as any
+        ).insert({
+          affiliate_id:
+            affiliate.id,
+          total_clicks: 0,
+          total_referrals: 1,
+          total_earnings:
+            affiliate.earnings ||
+            6,
+        });
+      }
     }
-
-    const users =
-      admin.from(
-        "users"
-      ) as any;
-
-    await users
-      .update({
-        referred_by:
-          referralCode,
-      })
-      .eq(
-        "id",
-        userId
-      );
 
     return NextResponse.json({
       success: true,

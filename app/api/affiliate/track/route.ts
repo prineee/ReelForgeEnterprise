@@ -1,49 +1,45 @@
-import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { NextRequest, NextResponse } from "next/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
-export async function POST(request: Request) {
+export async function POST(
+  req: NextRequest
+) {
   try {
-    const supabase = createClient();
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
-    }
-
-    const body = await request.json();
-    const referralCode = body.referralCode;
+    const { referralCode } =
+      await req.json();
 
     if (!referralCode) {
       return NextResponse.json(
-        { error: "No referral code supplied" },
-        { status: 400 }
+        {
+          success: false,
+        },
+        {
+          status: 400,
+        }
       );
     }
 
-    const affiliates = supabase.from(
-      "affiliates"
-    ) as any;
+    const admin =
+      createAdminClient();
 
-    const { data: affiliate } =
-      await affiliates
-        .select("*")
-        .eq(
-          "referral_code",
-          referralCode
-        )
-        .single();
+    const {
+      data: affiliate,
+    } = await (
+      admin.from(
+        "affiliates"
+      ) as any
+    )
+      .select("id")
+      .eq(
+        "referral_code",
+        referralCode
+      )
+      .single();
 
     if (!affiliate) {
       return NextResponse.json(
         {
-          error:
-            "Invalid referral code",
+          success: false,
         },
         {
           status: 404,
@@ -51,48 +47,78 @@ export async function POST(request: Request) {
       );
     }
 
-    const referrals = supabase.from(
-      "user_referrals"
-    ) as any;
+   await (
+  admin.from(
+    "affiliate_clicks"
+  ) as any
+).insert({
+  affiliate_id:
+    affiliate.id,
+  country: "Unknown",
+  ip_address:
+    req.headers.get(
+      "x-forwarded-for"
+    ) || "",
+  referrer:
+    req.headers.get(
+      "referer"
+    ) || "",
+  session_id:
+    crypto.randomUUID(),
+  converted: false,
+});
+const {
+  data: stats,
+} = await (
+  admin.from(
+    "affiliate_stats"
+  ) as any
+)
+  .select("*")
+  .eq(
+    "affiliate_id",
+    affiliate.id
+  )
+  .maybeSingle();
 
-    const { data: existing } =
-      await referrals
-        .select("*")
-        .eq("user_id", user.id)
-        .single();
-
-    if (existing) {
-      return NextResponse.json({
-        success: true,
-      });
-    }
-
-    await referrals.insert({
-      user_id: user.id,
-      affiliate_id: affiliate.id,
-    });
-
-    const users =
-      supabase.from("users") as any;
-
-    await users
-      .update({
-        referred_by: referralCode,
-      })
-      .eq("id", user.id);
+if (stats) {
+  await (
+    admin.from(
+      "affiliate_stats"
+    ) as any
+  )
+    .update({
+      total_clicks:
+        (stats.total_clicks || 0) +
+        1,
+    })
+    .eq(
+      "affiliate_id",
+      affiliate.id
+    );
+} else {
+  await (
+    admin.from(
+      "affiliate_stats"
+    ) as any
+  ).insert({
+    affiliate_id:
+      affiliate.id,
+    total_clicks: 1,
+    total_referrals: 0,
+    total_earnings: 0,
+  });
+}
 
     return NextResponse.json({
       success: true,
     });
-  } catch (error) {
-    console.error(
-      "Referral Tracking Error:",
-      error
-    );
+  } catch (err) {
+    console.error(err);
 
     return NextResponse.json(
       {
-        error: "Tracking failed",
+        success: false,
       },
       {
         status: 500,

@@ -1,5 +1,5 @@
 'use client'
-
+import { useSearchParams } from "next/navigation";
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -14,8 +14,30 @@ import {
 import { createClient } from '@/lib/supabase/client'
 
 export default function RegisterPage() {
+  async function handleGoogleLogin() {
+  setGoogleLoading(true);
+  setError("");
+
+  const { error } =
+    await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo:
+          `${window.location.origin}/api/auth/callback?next=/dashboard`,
+      },
+    });
+
+  if (error) {
+    setError(error.message);
+    setGoogleLoading(false);
+  }
+}
   const router = useRouter()
   const supabase = createClient()
+  const searchParams = useSearchParams();
+
+const referralCode =
+  searchParams.get("ref");
 
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -52,128 +74,104 @@ export default function RegisterPage() {
 }
   }, [])
 
-  async function handleRegister(
-    e: React.FormEvent
-  ) {
-    e.preventDefault()
+ async function handleRegister(
+  e: React.FormEvent
+) {
+  e.preventDefault();
 
-    setLoading(true)
-    setError('')
+  setLoading(true);
+  setError("");
 
-    const callbackUrl =
-      `${window.location.origin}/api/auth/callback?next=/dashboard`
-
+  try {
     const {
       data,
       error,
     } = await supabase.auth.signUp({
       email,
       password,
-      options: {
-        data: {
-          full_name: name,
-        },
-        emailRedirectTo:
-          callbackUrl,
-      },
-    })
+    });
 
     if (error) {
-      setError(error.message)
-      setLoading(false)
-      return
+      setError(error.message);
+      setLoading(false);
+      return;
     }
 
-    const referralCode =
-      localStorage.getItem(
-        'affiliate_ref'
-      )
-
+    // Track referral click
     if (
       referralCode &&
-      data.user
+      data?.user
+    ) {
+      await fetch(
+        "/api/affiliate/track",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+          body: JSON.stringify({
+            referralCode,
+          }),
+        }
+      );
+    }
+
+    // Save referral conversion
+    const savedReferral =
+      localStorage.getItem(
+        "affiliate_ref"
+      );
+
+    if (
+      savedReferral &&
+      data?.user
     ) {
       try {
         await fetch(
-          '/api/affiliate/save-referral',
+          "/api/affiliate/save-referral",
           {
-            method: 'POST',
+            method: "POST",
             headers: {
-              'Content-Type':
-                'application/json',
+              "Content-Type":
+                "application/json",
             },
             body: JSON.stringify({
-  referralCode,
-  userId: data.user?.id,
-}),
+              referralCode:
+                savedReferral,
+              userId:
+                data.user.id,
+            }),
           }
-        )
+        );
       } catch (err) {
         console.error(
-          'Failed to save referral',
+          "Failed to save referral",
           err
-        )
+        );
       }
     }
 
-    setLoading(false)
+    setLoading(false);
 
     if (data.session) {
-      router.push('/dashboard')
-      return
+      router.push(
+        "/dashboard"
+      );
+      return;
     }
 
-    setSuccess(true)
+    setSuccess(true);
+  } catch (err) {
+    console.error(err);
+
+    setError(
+      "Registration failed."
+    );
+
+    setLoading(false);
   }
-
-  async function handleGoogleLogin() {
-    setGoogleLoading(true)
-    setError('')
-
-    const callbackUrl =
-      `${window.location.origin}/api/auth/callback?next=/dashboard`
-
-    const { error } =
-      await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo:
-            callbackUrl,
-        },
-      })
-
-    if (error) {
-      setError(error.message)
-      setGoogleLoading(false)
-    }
-  }
-
-  if (success) {
-    return (
-      <div className="min-h-screen bg-surface flex items-center justify-center px-4">
-        <div className="w-full max-w-md text-center">
-          <div className="w-16 h-16 rounded-full bg-green-950 border border-green-800 flex items-center justify-center mx-auto mb-6">
-            <Check className="w-8 h-8 text-green-400" />
-          </div>
-
-          <h2 className="text-2xl font-bold mb-2">
-            Check your email
-          </h2>
-
-          <p className="text-gray-400">
-            We've sent a confirmation
-            link to{' '}
-            <span className="text-white font-medium">
-              {email}
-            </span>
-            . Click it to activate your
-            account.
-          </p>
-        </div>
-      </div>
-    )
-  }
-
+}
   return (
     <div className="min-h-screen bg-surface flex items-center justify-center px-4">
       <div className="w-full max-w-md">
