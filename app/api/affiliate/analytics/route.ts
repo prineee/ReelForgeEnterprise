@@ -13,7 +13,12 @@ export async function GET() {
 
     if (!user) {
       return NextResponse.json(
-        { error: "Unauthorized" },
+        {
+          totalClicks: 0,
+          totalReferrals: 0,
+          totalSales: 0,
+          conversionRate: 0,
+        },
         { status: 401 }
       );
     }
@@ -26,10 +31,10 @@ export async function GET() {
 
     if (!affiliate) {
       return NextResponse.json({
-        clicks: 0,
-        referrals: 0,
-        sales: 0,
-        conversion: 0,
+        totalClicks: 0,
+        totalReferrals: 0,
+        totalSales: 0,
+        conversionRate: 0,
       });
     }
 
@@ -39,34 +44,46 @@ export async function GET() {
       .eq("affiliate_id", affiliate.id)
       .single();
 
-    const clicks =
+    const totalClicks =
       stats?.total_clicks || 0;
 
-    const referrals =
+    const totalReferrals =
       stats?.total_referrals || 0;
 
-    const sales =
+    const totalSales =
       stats?.total_earnings || 0;
 
-    const conversion =
-      clicks > 0
+    const conversionRate =
+      totalClicks > 0
         ? Math.round(
-            (referrals / clicks) * 100
+            (totalReferrals /
+              totalClicks) *
+              100
           )
         : 0;
 
     return NextResponse.json({
-      clicks,
-      referrals,
-      sales,
-      conversion,
+      totalClicks,
+      totalReferrals,
+      totalSales,
+      conversionRate,
     });
   } catch (err) {
-    console.error(err);
+    console.error(
+      "AFFILIATE ANALYTICS ERROR:",
+      err
+    );
 
     return NextResponse.json(
-      { error: "Internal Server Error" },
-      { status: 500 }
+      {
+        totalClicks: 0,
+        totalReferrals: 0,
+        totalSales: 0,
+        conversionRate: 0,
+      },
+      {
+        status: 500,
+      }
     );
   }
 }
