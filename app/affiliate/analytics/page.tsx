@@ -5,6 +5,9 @@ import { useEffect, useState } from "react";
 export default function AnalyticsPage() {
   const [stats, setStats] =
     useState<any>(null);
+    const [commissions,
+  setCommissions] =
+  useState<any[]>([]);
 
   const [referrals, setReferrals] =
     useState<any[]>([]);
@@ -13,11 +16,73 @@ export default function AnalyticsPage() {
     fetch("/api/affiliate/dashboard")
       .then((r) => r.json())
       .then(setStats);
+      fetch(
+  "/api/affiliate/recent-commissions"
+)
+  .then((r) => r.json())
+  .then(setCommissions);
 
     fetch("/api/affiliate/recent-referrals")
       .then((r) => r.json())
       .then(setReferrals);
   }, []);
+  <div className="mt-10 rounded-xl border p-6">
+
+  <h2 className="text-2xl font-bold mb-6">
+    Recent Commissions
+  </h2>
+
+  {commissions.length === 0 ? (
+    <p className="text-gray-500">
+      No commissions yet.
+    </p>
+  ) : (
+    <table className="w-full">
+
+      <thead>
+        <tr className="border-b">
+          <th className="py-3 text-left">
+            Amount
+          </th>
+
+          <th className="text-left">
+            Status
+          </th>
+
+          <th className="text-left">
+            Date
+          </th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {commissions.map(
+          (c) => (
+            <tr
+              key={c.id}
+              className="border-b"
+            >
+              <td className="py-4">
+                ₹{c.amount}
+              </td>
+
+              <td>
+                {c.status}
+              </td>
+
+              <td>
+                {new Date(
+                  c.created_at
+                ).toLocaleString()}
+              </td>
+            </tr>
+          )
+        )}
+      </tbody>
+
+    </table>
+  )}
+</div>
 
   if (!stats) {
     return (
