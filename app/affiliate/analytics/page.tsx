@@ -1,100 +1,38 @@
 "use client";
-import EarningsChart from "@/components/affiliate/EarningsChart";
+
 import { useEffect, useState } from "react";
+import EarningsChart from "@/components/affiliate/EarningsChart";
 
 export default function AnalyticsPage() {
   const [stats, setStats] =
     useState<any>(null);
-    const [commissions,
-  setCommissions] =
-  useState<any[]>([]);
-const [chartData,
-  setChartData] =
-  useState<any[]>([]);
+
+  const [chartData, setChartData] =
+    useState<any[]>([]);
+
   const [referrals, setReferrals] =
+    useState<any[]>([]);
+
+  const [commissions, setCommissions] =
     useState<any[]>([]);
 
   useEffect(() => {
     fetch("/api/affiliate/dashboard")
       .then((r) => r.json())
       .then(setStats);
-      fetch(
-  "/api/affiliate/recent-commissions"
-)
-<div className="mt-10">
-  <EarningsChart
-    data={chartData}
-  />
-</div>
-  .then((r) => r.json())
-  .then(setCommissions);
 
-  fetch(
-  "/api/affiliate/chart-data"
-)
-  .then((r) => r.json())
-  .then(setChartData);
+    fetch("/api/affiliate/chart-data")
+      .then((r) => r.json())
+      .then(setChartData);
+
     fetch("/api/affiliate/recent-referrals")
       .then((r) => r.json())
       .then(setReferrals);
+
+    fetch("/api/affiliate/recent-commissions")
+      .then((r) => r.json())
+      .then(setCommissions);
   }, []);
-  <div className="mt-10 rounded-xl border p-6">
-
-  <h2 className="text-2xl font-bold mb-6">
-    Recent Commissions
-  </h2>
-
-  {commissions.length === 0 ? (
-    <p className="text-gray-500">
-      No commissions yet.
-    </p>
-  ) : (
-    <table className="w-full">
-
-      <thead>
-        <tr className="border-b">
-          <th className="py-3 text-left">
-            Amount
-          </th>
-
-          <th className="text-left">
-            Status
-          </th>
-
-          <th className="text-left">
-            Date
-          </th>
-        </tr>
-      </thead>
-
-      <tbody>
-        {commissions.map(
-          (c) => (
-            <tr
-              key={c.id}
-              className="border-b"
-            >
-              <td className="py-4">
-                ₹{c.amount}
-              </td>
-
-              <td>
-                {c.status}
-              </td>
-
-              <td>
-                {new Date(
-                  c.created_at
-                ).toLocaleString()}
-              </td>
-            </tr>
-          )
-        )}
-      </tbody>
-
-    </table>
-  )}
-</div>
 
   if (!stats) {
     return (
@@ -110,9 +48,8 @@ const [chartData,
         Analytics
       </h1>
 
-      {/* Statistics Cards */}
+      {/* Statistics */}
       <div className="grid gap-6 md:grid-cols-4">
-
         <div className="rounded-xl border p-6">
           <h3 className="text-gray-500">
             Total Clicks
@@ -152,12 +89,17 @@ const [chartData,
             {stats.conversionRate}%
           </p>
         </div>
+      </div>
 
+      {/* Earnings Chart */}
+      <div className="mt-10">
+        <EarningsChart
+          data={chartData}
+        />
       </div>
 
       {/* Recent Referrals */}
       <div className="mt-10 rounded-xl border p-6">
-
         <h2 className="text-2xl font-bold mb-6">
           Recent Referrals
         </h2>
@@ -168,9 +110,7 @@ const [chartData,
           </p>
         ) : (
           <div className="overflow-x-auto">
-
             <table className="w-full">
-
               <thead>
                 <tr className="border-b">
                   <th className="py-3 text-left">
@@ -201,10 +141,62 @@ const [chartData,
                   </tr>
                 ))}
               </tbody>
-
             </table>
-
           </div>
+        )}
+      </div>
+
+      {/* Recent Commissions */}
+      <div className="mt-10 rounded-xl border p-6">
+        <h2 className="text-2xl font-bold mb-6">
+          Recent Commissions
+        </h2>
+
+        {commissions.length === 0 ? (
+          <p className="text-gray-500">
+            No commissions yet.
+          </p>
+        ) : (
+          <table className="w-full">
+            <thead>
+              <tr className="border-b">
+                <th className="py-3 text-left">
+                  Amount
+                </th>
+
+                <th className="text-left">
+                  Status
+                </th>
+
+                <th className="text-left">
+                  Date
+                </th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {commissions.map((c) => (
+                <tr
+                  key={c.id}
+                  className="border-b"
+                >
+                  <td className="py-4">
+                    ₹{c.amount}
+                  </td>
+
+                  <td>
+                    {c.status}
+                  </td>
+
+                  <td>
+                    {new Date(
+                      c.created_at
+                    ).toLocaleString()}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </div>
     </div>
