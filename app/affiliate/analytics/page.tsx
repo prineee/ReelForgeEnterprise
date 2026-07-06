@@ -1,5 +1,5 @@
 "use client";
-
+import EarningsChart from "@/components/affiliate/EarningsChart";
 import { useEffect, useState } from "react";
 
 export default function AnalyticsPage() {
@@ -8,7 +8,9 @@ export default function AnalyticsPage() {
     const [commissions,
   setCommissions] =
   useState<any[]>([]);
-
+const [chartData,
+  setChartData] =
+  useState<any[]>([]);
   const [referrals, setReferrals] =
     useState<any[]>([]);
 
@@ -19,9 +21,19 @@ export default function AnalyticsPage() {
       fetch(
   "/api/affiliate/recent-commissions"
 )
+<div className="mt-10">
+  <EarningsChart
+    data={chartData}
+  />
+</div>
   .then((r) => r.json())
   .then(setCommissions);
 
+  fetch(
+  "/api/affiliate/chart-data"
+)
+  .then((r) => r.json())
+  .then(setChartData);
     fetch("/api/affiliate/recent-referrals")
       .then((r) => r.json())
       .then(setReferrals);
