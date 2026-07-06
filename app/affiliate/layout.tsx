@@ -35,6 +35,9 @@ export default function AffiliateLayout({
             Sales
           </Link>
 
+<Link href="/affiliate/commissions">
+  Commission History
+</Link>
           <Link
             href="/affiliate/payouts"
             className="block rounded-lg px-4 py-3 hover:bg-zinc-800"

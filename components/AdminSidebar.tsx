@@ -37,6 +37,9 @@ export default function AdminSidebar() {
         >
           Affiliate Leaderboard
         </Link>
+        <Link href="/affiliate/commissions">
+  Commission History
+</Link>
 
         <Link
           href="/admin/affiliate-analytics"
