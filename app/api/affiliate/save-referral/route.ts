@@ -12,7 +12,11 @@ export async function POST(
       referralCode,
       userId,
     } = await request.json();
-
+console.log("SAVE REFERRAL REQUEST");
+console.log({
+  referralCode,
+  userId,
+});
     if (
       !referralCode ||
       !userId

@@ -4,7 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function GET() {
   try {
-    const supabase = createClient();
+    const supabase = await createClient();
     const admin = createAdminClient();
 
     const {
@@ -54,7 +54,7 @@ export async function POST(
   request: Request
 ) {
   try {
-    const supabase = createClient();
+    const supabase = await createClient();
     const admin = createAdminClient();
 
     const {

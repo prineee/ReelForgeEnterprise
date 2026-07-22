@@ -30,7 +30,7 @@ export type CreditCheckResult =
  *   if (!check.ok) return check.response
  */
 export async function requireCredits(action: CreditAction): Promise<CreditCheckResult> {
-  const supabase = createClient()
+  const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
   if (!user) {

@@ -6,7 +6,7 @@ export async function GET(req: Request) {
   const videoId = searchParams.get('video_id')
   if (!videoId) return NextResponse.json({ error: 'video_id required' }, { status: 400 })
 
-  const supabase = createClient()
+  const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

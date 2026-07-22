@@ -1,7 +1,7 @@
 'use strict'
 
 require('dotenv').config()
-
+const movieRenderRoutes = require('./routes/movieRenderRoutes')
 const express       = require('express')
 const reelRoutes            = require('./routes/reelRoutes')
 const cartoonRoutes         = require('./routes/cartoonRoutes')
@@ -22,7 +22,7 @@ app.use((req, res, next) => {
   if (req.method === 'OPTIONS') return res.status(200).end()
   next()
 })
-
+app.use('/', movieRenderRoutes)
 // ── Body parsing ──────────────────────────────────────────────────────────────
 // 20 mb limit to accommodate base64-encoded WAV audio in the request body.
 app.use(express.json({ limit: '20mb' }))

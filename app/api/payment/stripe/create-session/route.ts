@@ -4,7 +4,7 @@ import Stripe from 'stripe'
 import { PLAN_BY_KEY, type PlanKey } from '@/lib/plans'
 
 export async function POST(request: Request) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

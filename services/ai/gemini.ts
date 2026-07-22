@@ -1,104 +1,171 @@
+// @ts-ignore - @google/genai ships a d.ts that TS module resolution flags as "not a module"
 import { GoogleGenAI } from "@google/genai";
 
 const apiKey = process.env.GEMINI_API_KEY;
-
 if (!apiKey) {
-  throw new Error(
-    "GEMINI_API_KEY is missing from your environment variables."
-  );
+  throw new Error("GEMINI_API_KEY is missing.");
 }
 
-export const gemini = new GoogleGenAI({
+const ai = new GoogleGenAI({
   apiKey,
 });
 
-export interface GenerateOptions {
+const GEMINI_REQUEST_TIMEOUT_MS = 30000;
+
+/** Races `promise` against a timeout; rejects with `message` if the timeout wins. */
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      setTimeout(() => reject(new Error(message)), ms);
+    }),
+  ]);
+}
+
+export interface VideoRequest {
   prompt: string;
-  systemInstruction?: string;
-  temperature?: number;
-  maxOutputTokens?: number;
+  negativePrompt?: string;
+  duration?: number;
 }
 
-export async function generateJSON({
-  prompt,
-  systemInstruction = "",
-  temperature = 0.8,
-  maxOutputTokens = 8192,
-}: GenerateOptions) {
-  try {
-    const response = await gemini.models.generateContent({
-      model: "gemini-2.5-pro",
-      contents: prompt,
-      config: {
-        systemInstruction,
-        temperature,
-        maxOutputTokens,
-        responseMimeType: "application/json",
-      },
+export interface VideoOperation {
+  operationId: string;
+}
+
+export async function generateMovieBible(
+  prompt: string
+): Promise<string> {
+
+  const response =
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await withTimeout<any>(
+      ai.models.generateContent({
+
+        model: "gemini-2.5-flash",
+
+        contents: prompt,
+
+      }),
+      GEMINI_REQUEST_TIMEOUT_MS,
+      "Gemini request timeout"
+    );
+
+  return response.text ?? "";
+
+}
+
+export async function generateReferenceImage(
+  prompt: string
+) {
+
+  const response =
+    await ai.models.generateImages({
+
+      model: "imagen-4.0-generate-001",
+
+      prompt,
+
     });
 
-    const text = response.text ?? "";
+  return response;
 
-    const cleaned = text
-      .replace(/^```json/, "")
-      .replace(/^```/, "")
-      .replace(/```$/, "")
-      .trim();
-
-    return JSON.parse(cleaned);
-  } catch (error) {
-    console.error("Gemini JSON Error:", error);
-    throw error;
-  }
 }
 
-export async function generateText({
-  prompt,
-  systemInstruction = "",
-  temperature = 0.8,
-  maxOutputTokens = 8192,
-}: GenerateOptions) {
-  try {
-    const response = await gemini.models.generateContent({
-      model: "gemini-2.5-pro",
-      contents: prompt,
+export async function generateSceneVideo(
+  request: VideoRequest
+): Promise<VideoOperation> {
+
+  console.log("================================");
+  console.log("Generating Video using Veo");
+  console.log(request.prompt);
+  console.log("================================");
+
+  const operation =
+    await ai.models.generateVideos({
+
+      model: "veo-3.1-generate-preview",
+
+      prompt: request.prompt,
+
       config: {
-        systemInstruction,
-        temperature,
-        maxOutputTokens,
+
+        aspectRatio: "9:16",
+
+        durationSeconds:
+          request.duration ?? 8,
+
+        resolution: "720p",
+
+        numberOfVideos: 1,
+
       },
+
     });
 
-    return response.text ?? "";
-  } catch (error) {
-    console.error("Gemini Text Error:", error);
-    throw error;
-  }
+  return {
+
+    operationId: operation.name,
+
+  };
+
 }
 
-export async function generateMovieBible(prompt: string) {
-  return generateJSON({
-    prompt,
-    systemInstruction: `
-You are ReelForge Enterprise AI Director.
+export async function checkVideoOperation(
+  operationId: string
+) {
 
-You are an Oscar-winning Hollywood film director.
+  let operation =
+    await ai.operations.getVideosOperation({
 
-Always respond ONLY with valid JSON.
+      operation: {
 
-Never include markdown.
+        name: operationId,
 
-Maintain character consistency.
+      },
 
-Maintain camera consistency.
+    });
 
-Maintain cinematic storytelling.
+  while (!operation.done) {
 
-Maintain visual continuity.
+    await new Promise(resolve =>
+      setTimeout(resolve, 5000)
+    );
 
-Return production-ready JSON.
-`,
-    temperature: 0.7,
-    maxOutputTokens: 8192,
-  });
+    operation =
+      await ai.operations.getVideosOperation({
+
+        operation,
+
+      });
+
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const response = operation.response as any;
+
+  return {
+
+    completed: true,
+
+    operationId,
+
+    videoUrl:
+      response.generatedVideos?.[0]?.video?.uri ?? "",
+
+  };
+
+}
+
+export async function downloadVideo(
+  url: string
+): Promise<Buffer> {
+
+  const response =
+    await fetch(url);
+
+  const buffer =
+    await response.arrayBuffer();
+
+  return Buffer.from(buffer);
+
 }

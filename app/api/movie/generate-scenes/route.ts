@@ -1,12 +1,15 @@
+import { MovieRenderPipeline } from "@/services/movie/MovieRenderPipeline";
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { requireCredits } from '@/lib/credits'
 
 export async function POST(req: Request) {
-  const creditCheck = await requireCredits('movie_scenes')
-  if (!creditCheck.ok) return creditCheck.response
+  const creditCheck = await requireCredits("movie_scenes");
 
-  const supabase = createClient()
+if (creditCheck.ok === false) {
+  return creditCheck.response;
+}
+  const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -44,12 +47,35 @@ export async function POST(req: Request) {
   }
 
   if (!scenes.length) return NextResponse.json({ error: 'No scenes found' }, { status: 400 })
-
-  if (movie_id) {
+  
+    if (movie_id) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (supabase.from('movies') as any).update({ status: 'generating' }).eq('id', movie_id)
   }
+const renderResult =
+  await MovieRenderPipeline.render({
+    title: movie_id ?? "Movie",
+    scenes,
+    characters:
+      body.characters ?? [],
+  });
 
+if (!renderResult.success) {
+  return NextResponse.json(
+    {
+      error:
+        renderResult.error,
+    },
+    {
+      status: 500,
+    }
+  );
+}
+
+console.log(
+  "Gemini Pipeline Ready:",
+  renderResult
+);
   const workerUrl = (
     process.env.NEXT_PUBLIC_WORKER_URL ||
     'https://reel-forge-production.up.railway.app'

@@ -55,7 +55,7 @@ function CollapsibleSection({ title, icon, children }: {
 // ── Pill selector ─────────────────────────────────────────────────────────────
 
 function Pills<T extends string>({ options, value, onChange }: {
-  options: readonly T[]; value: T; onChange: (v: T) => void
+  options: readonly T[]; value: T; onChange: React.Dispatch<React.SetStateAction<T>>
 }) {
   return (
     <div className="flex flex-wrap gap-1.5">
@@ -72,7 +72,7 @@ function Pills<T extends string>({ options, value, onChange }: {
 }
 
 function Select<T extends string>({ label, options, value, onChange }: {
-  label: string; options: readonly T[]; value: T; onChange: (v: T) => void
+  label: string; options: readonly T[]; value: T; onChange: React.Dispatch<React.SetStateAction<T>>
 }) {
   return (
     <div>

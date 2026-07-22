@@ -22,7 +22,7 @@ const ORPHEUS_VOICES: Voice[] = [
 ]
 
 export async function GET() {
-  const supabase = createClient()
+  const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) {
     console.log('[voices] Unauthorized request')

@@ -1,0 +1,67 @@
+import { NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
+
+export async function GET(req: Request) {
+
+  const supabase =
+    await createClient();
+
+  const url =
+    new URL(req.url);
+
+  const movieId =
+    url.searchParams.get(
+      "movie_id"
+    );
+
+  if (!movieId) {
+    return NextResponse.json(
+      {
+        error:
+          "Movie ID required",
+      },
+      {
+        status: 400,
+      }
+    );
+  }
+
+  const { data } =
+    await (supabase
+      .from("movies") as any)
+      .select("*")
+      .eq("id", movieId)
+      .single();
+
+  if (!data) {
+    return NextResponse.json(
+      {
+        error:
+          "Movie not found",
+      },
+      {
+        status: 404,
+      }
+    );
+  }
+
+  return NextResponse.json({
+
+    status:
+      data.status ?? "waiting",
+
+    progress:
+      data.progress ?? 0,
+
+    currentScene:
+      data.current_scene ?? 0,
+
+    totalScenes:
+      data.total_scenes ?? 0,
+
+    downloadUrl:
+      data.video_url ?? null,
+
+  });
+
+}

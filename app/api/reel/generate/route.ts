@@ -30,7 +30,7 @@ export async function POST(request: Request) {
     return check.response
   }
 
-  const supabase = createClient()
+  const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) {
     console.log('[reel/generate] Unauthorized')

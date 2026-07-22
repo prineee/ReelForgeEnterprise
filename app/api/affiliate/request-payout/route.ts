@@ -6,7 +6,7 @@ const MIN_PAYOUT = 5;
 
 export async function POST() {
   try {
-    const supabase = createClient();
+    const supabase = await createClient();
 const admin = createAdminClient();
 
     const {

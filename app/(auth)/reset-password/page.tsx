@@ -43,7 +43,7 @@ export default function ResetPasswordPage() {
 
     setLoading(true); setError('')
 
-    const supabase = createClient()
+    const supabase = await createClient()
     const { error } = await supabase.auth.updateUser({ password })
 
     setLoading(false)
