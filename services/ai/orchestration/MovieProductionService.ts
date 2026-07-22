@@ -2,20 +2,22 @@
  * MovieProductionService.ts
  *
  * The top-level movie production orchestrator: the single entry point that
- * will eventually drive a ProductionRequest through the director pipeline,
- * reference image generation, prompt composition, queued video generation,
- * movie assembly, and final rendering — exposing only the four methods a
- * caller needs (start, track progress, cancel, retry a stage).
+ * drives a ProductionRequest through the director pipeline, reference image
+ * generation, prompt composition, queued video generation, movie assembly,
+ * and final rendering — exposing only the four methods a caller needs
+ * (start, track progress, cancel, retry a stage).
  *
- * Every dependency is constructor-injected. Stages 1-5 are implemented so
- * far: runStoryPlanningStage() (Story Planning), runReferenceImageStage()
+ * Every dependency is constructor-injected. All six stages are
+ * implemented: runStoryPlanningStage() (Story Planning), runReferenceImageStage()
  * (Reference Image Generation), runScenePromptStage() (Scene Prompt
- * Generation), runVideoGenerationStage() (Scene Video Generation), and
- * runMovieAssemblyStage() (Movie Assembly). Every stage after that remains
- * unimplemented. startProduction() runs all five and returns a temporary,
- * in-progress ProductionResult whose warnings list every remaining stage
- * as not yet implemented. getProgress() is now implemented (see below).
- * cancelProduction()/retryStage() are still TODO scaffolds.
+ * Generation), runVideoGenerationStage() (Scene Video Generation),
+ * runMovieAssemblyStage() (Movie Assembly), and runFinalRenderingStage()
+ * (Final Rendering — see that method's doc comment: it produces a render
+ * manifest via FinalMovieRenderer, not an encoded video file, since no
+ * real video-encoding pipeline exists in this codebase yet).
+ * startProduction() runs all six and returns a completed ProductionResult.
+ * getProgress() is implemented (see below). cancelProduction()/retryStage()
+ * are still TODO scaffolds.
  *
  * Infrastructure note: all per-stage intermediate data now lives in an
  * injected ProductionContextRepository (services/infrastructure/
@@ -132,7 +134,7 @@ import type { CloudinaryService } from "../providers/storage/CloudinaryService";
 import type { RenderQueue } from "../production/RenderQueue";
 import type { BatchGenerationResult } from "../production/VeoGenerator";
 import type { MovieAssembler, MovieAssemblyResult } from "../production/MovieAssembler";
-import type { FinalMovieRenderer } from "../production/FinalMovieRenderer";
+import type { FinalMovieRenderer, RenderPlan } from "../production/FinalMovieRenderer";
 import type {
   ProductionContextRepository,
   ProductionContext,
@@ -174,22 +176,19 @@ const STAGE_COMPLETION: ReadonlyArray<{
   { stage: ProductionStage.PromptComposition, isDone: (c) => c.sceneGenerationRequests !== undefined },
   { stage: ProductionStage.VideoGeneration, isDone: (c) => c.generatedVideos !== undefined },
   { stage: ProductionStage.MovieAssembly, isDone: (c) => c.movieAssembly !== undefined },
-  { stage: ProductionStage.FinalRendering, isDone: () => false },
+  { stage: ProductionStage.FinalRendering, isDone: (c) => c.finalRenderPlan !== undefined },
 ];
 
 /**
  * The ProductionStage values completed by the stages implemented so far —
- * every STAGE_COMPLETION entry except FinalRendering, which no stage
- * implements yet.
+ * every STAGE_COMPLETION entry; all eleven stages are implemented.
  */
-const IMPLEMENTED_STAGES: readonly ProductionStage[] = STAGE_COMPLETION.filter(
-  (entry) => entry.stage !== ProductionStage.FinalRendering
-).map((entry) => entry.stage);
+const IMPLEMENTED_STAGES: readonly ProductionStage[] = STAGE_COMPLETION.map((entry) => entry.stage);
 
 /**
  * The single entry point for driving a movie production end-to-end. Every
- * collaborator is constructor-injected. Only Stages 1-5 are implemented so
- * far — see the file-level comment above.
+ * collaborator is constructor-injected. All six stages are implemented —
+ * see the file-level comment above.
  */
 export class MovieProductionService {
   constructor(
@@ -212,9 +211,10 @@ export class MovieProductionService {
   /**
    * Runs Stage 1 (Story Planning), Stage 2 (Reference Image Generation),
    * Stage 3 (Scene Prompt Generation), Stage 4 (Scene Video Generation),
-   * and Stage 5 (Movie Assembly) and returns a temporary, in-progress
-   * ProductionResult. Every stage after that is reported as not yet
-   * implemented via ProductionWarning entries.
+   * Stage 5 (Movie Assembly), and Stage 6 (Final Rendering) and returns
+   * the completed ProductionResult. All eleven ProductionStage values are
+   * implemented, so buildRemainingStageWarnings() now always returns [] —
+   * kept for symmetry/safety rather than removed outright.
    */
   async startProduction(
     request: ProductionRequest,
@@ -228,18 +228,20 @@ export class MovieProductionService {
     const scenePromptResult = await this.runScenePromptStage(request.productionId);
     const videoGenerationResult = await this.runVideoGenerationStage(request.productionId);
     const movieAssemblyResult = await this.runMovieAssemblyStage(request.productionId);
+    const finalRenderingResult = await this.runFinalRenderingStage(request.productionId);
 
     const completedAt = new Date().toISOString();
 
     return {
       productionId: request.productionId,
-      status: ProductionStatus.InProgress,
+      status: ProductionStatus.Completed,
       artifacts: [
         ...storyPlanningResult.artifacts,
         ...referenceImageResult.artifacts,
         ...scenePromptResult.artifacts,
         ...videoGenerationResult.artifacts,
         ...movieAssemblyResult.artifacts,
+        ...finalRenderingResult.artifacts,
       ],
       stageResults: [
         storyPlanningResult,
@@ -247,6 +249,7 @@ export class MovieProductionService {
         scenePromptResult,
         videoGenerationResult,
         movieAssemblyResult,
+        finalRenderingResult,
       ],
       warnings: this.buildRemainingStageWarnings(completedAt),
       startedAt,
@@ -792,6 +795,92 @@ export class MovieProductionService {
       // itself a new URL-addressable artifact.
       artifacts: [],
       warnings: [],
+    };
+  }
+
+  /**
+   * Stage 6: Final Rendering.
+   *
+   * Reads this production's context for its MovieAssemblyResult, calls
+   * FinalMovieRenderer.prepareRender() to produce a RenderPlan (an ordered
+   * render manifest: segments, resolved output encoding settings, and
+   * statistics), writes it into this production's context, and returns
+   * this stage's StageResult.
+   *
+   * FinalMovieRenderer is planning-only — no FFmpeg, no encoding, no file
+   * I/O (see that file's header comment); no real video-encoding pipeline
+   * exists anywhere in this codebase yet. The returned MOVIE artifact's
+   * url is therefore the render manifest itself, encoded as a data: URI —
+   * the same pattern Stage 1 already uses for its SCRIPT artifact in
+   * buildStoryPackageArtifact(), since neither has a separately-hosted URL
+   * of its own — not an encoded video file. A real encoder can consume
+   * ProductionContext.finalRenderPlan later without this stage changing.
+   */
+  private async runFinalRenderingStage(productionId: ProductionId): Promise<StageResult> {
+    const context = this.getContext(productionId);
+    if (!context.movieAssembly) {
+      throw new MovieProductionServiceError(
+        `No MovieAssemblyResult found for production "${productionId}". runMovieAssemblyStage() must complete first.`
+      );
+    }
+    const movieAssembly = context.movieAssembly;
+
+    const stageId = this.generateStageId(ProductionStage.FinalRendering);
+    const startedAt = new Date().toISOString();
+
+    let renderPlan: RenderPlan;
+    try {
+      renderPlan = this.finalMovieRenderer.prepareRender(movieAssembly);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new MovieProductionServiceError(
+        `Final rendering failed for production "${productionId}": ${message}`,
+        error
+      );
+    }
+
+    context.finalRenderPlan = renderPlan;
+    this.contextRepository.save(context);
+
+    const completedAt = new Date().toISOString();
+
+    return {
+      stageId,
+      stage: ProductionStage.FinalRendering,
+      status: ProductionStatus.Completed,
+      startedAt,
+      completedAt,
+      artifacts: [this.buildRenderManifestArtifact(productionId, renderPlan, stageId, completedAt)],
+      warnings: [],
+    };
+  }
+
+  /**
+   * Builds the MOVIE artifact for the render manifest — see
+   * runFinalRenderingStage()'s doc comment for why this is the manifest
+   * itself (encoded as a data: URI) rather than an encoded video file.
+   */
+  private buildRenderManifestArtifact(
+    productionId: ProductionId,
+    renderPlan: RenderPlan,
+    stageId: StageId,
+    createdAt: ISODateTimeString
+  ): ProductionArtifact {
+    const encoded = Buffer.from(JSON.stringify(renderPlan), "utf-8").toString("base64");
+
+    return {
+      artifactId: `${productionId}-render-plan`,
+      stageId,
+      stage: ProductionStage.FinalRendering,
+      type: "MOVIE",
+      url: `data:application/json;base64,${encoded}`,
+      createdAt,
+      metadata: {
+        totalSegments: renderPlan.statistics.totalSegments,
+        totalDurationSeconds: renderPlan.statistics.totalDurationSeconds,
+        format: renderPlan.output.format,
+        resolution: renderPlan.output.resolution,
+      },
     };
   }
 

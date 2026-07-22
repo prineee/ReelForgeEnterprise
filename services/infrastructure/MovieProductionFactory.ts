@@ -22,10 +22,18 @@
  * This file creates no API routes, and does not modify
  * MovieProductionService, any provider file, or any contract file — it
  * only imports and composes them.
+ *
+ * Developer Mode: when AI_MODE=development, ProviderFactory
+ * (../ai/providers/ProviderFactory.ts) returns a mock GeminiService/
+ * ImagenService/VeoService/ElevenLabsService (../ai/devmode/) instead of
+ * the real one constructed below — no Gemini, Imagen, Veo, or ElevenLabs
+ * API call happens. This only changes which concrete service instance
+ * gets constructed here; every other line in this file (DI wiring,
+ * director/production layer composition) is unchanged and mode-agnostic.
  */
 
 // @ts-ignore - @google/genai ships a d.ts that TS module resolution flags as "not a module"
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, GenerateVideosOperation } from "@google/genai";
 import { v2 as cloudinary } from "cloudinary";
 
 import { StoryAnalyzer } from "../ai/director/StoryAnalyzer";
@@ -83,6 +91,9 @@ import type {
   GoogleVideoOperation,
   GoogleVideoDownloadResult,
 } from "../ai/providers/video/VeoProvider";
+
+import { ProviderFactory } from "../ai/providers/ProviderFactory";
+import { isDeveloperMode } from "../ai/devmode/isDeveloperMode";
 
 import { MovieProductionService } from "../ai/orchestration/MovieProductionService";
 import { InMemoryProductionContextRepository } from "./ProductionContextRepository";
@@ -237,6 +248,14 @@ class GoogleGenAIImagenClient implements ImagenClient {
  * MovieProductionService).
  */
 class GoogleGenAIVeoClient implements VeoClient {
+  // getVideosOperation() calls operation._fromAPIResponse(...) internally on
+  // whatever operation object is passed in, so it requires a real
+  // GenerateVideosOperation instance, not a bare { name } object literal —
+  // this caches the real instance generate() got back so checkStatus()/
+  // download() can pass it back in, per the SDK's documented usage
+  // (ai.operations.getVideosOperation({ operation: operation })).
+  private readonly operations = new Map<string, GenerateVideosOperation>();
+
   constructor(private readonly ai: GoogleGenAI) {}
 
   async generate(request: VeoRequest): Promise<VeoResponse> {
@@ -250,6 +269,7 @@ class GoogleGenAIVeoClient implements VeoClient {
         numberOfVideos: 1,
       },
     });
+    if (operation.name) this.operations.set(operation.name, operation);
 
     return {
       operationId: operation.name ?? "",
@@ -259,8 +279,9 @@ class GoogleGenAIVeoClient implements VeoClient {
 
   async checkStatus(operationId: string): Promise<VeoResponse> {
     const operation = await this.ai.operations.getVideosOperation({
-      operation: { name: operationId },
+      operation: this.requireOperation(operationId),
     });
+    this.operations.set(operationId, operation);
 
     return {
       operationId,
@@ -270,8 +291,9 @@ class GoogleGenAIVeoClient implements VeoClient {
 
   async download(operationId: string): Promise<GeneratedVideo> {
     const operation = await this.ai.operations.getVideosOperation({
-      operation: { name: operationId },
+      operation: this.requireOperation(operationId),
     });
+    this.operations.set(operationId, operation);
 
     // The SDK's operation.response shape for video generation isn't
     // strongly typed; same `as any` narrowing already used for this exact
@@ -282,6 +304,11 @@ class GoogleGenAIVeoClient implements VeoClient {
 
     return { url: videoUri };
   }
+
+  /** Returns the cached operation for this id, or synthesizes a real GenerateVideosOperation if none was cached yet (e.g. a fresh process instance polling an id it didn't create). */
+  private requireOperation(operationId: string): GenerateVideosOperation {
+    return this.operations.get(operationId) ?? Object.assign(new GenerateVideosOperation(), { name: operationId });
+  }
 }
 
 /**
@@ -291,6 +318,11 @@ class GoogleGenAIVeoClient implements VeoClient {
  * production layer's batch path, distinct from VeoService's direct path).
  */
 class GoogleGenAIVideoClient implements GoogleVideoClient {
+  // See GoogleGenAIVeoClient's identical cache above: getVideosOperation()
+  // requires a real GenerateVideosOperation instance, not a bare { name }
+  // object literal.
+  private readonly operations = new Map<string, GenerateVideosOperation>();
+
   constructor(private readonly ai: GoogleGenAI) {}
 
   async generate(request: GoogleVideoGenerateRequest): Promise<GoogleVideoOperation> {
@@ -304,6 +336,7 @@ class GoogleGenAIVideoClient implements GoogleVideoClient {
         numberOfVideos: 1,
       },
     });
+    if (operation.name) this.operations.set(operation.name, operation);
 
     return {
       name: operation.name ?? "",
@@ -313,8 +346,9 @@ class GoogleGenAIVideoClient implements GoogleVideoClient {
 
   async check(operationName: string): Promise<GoogleVideoOperation> {
     const operation = await this.ai.operations.getVideosOperation({
-      operation: { name: operationName },
+      operation: this.requireOperation(operationName),
     });
+    this.operations.set(operationName, operation);
 
     return {
       name: operationName,
@@ -325,14 +359,20 @@ class GoogleGenAIVideoClient implements GoogleVideoClient {
 
   async download(operationName: string): Promise<GoogleVideoDownloadResult> {
     const operation = await this.ai.operations.getVideosOperation({
-      operation: { name: operationName },
+      operation: this.requireOperation(operationName),
     });
+    this.operations.set(operationName, operation);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const response = operation.response as any;
     const videoUri: string = response?.generatedVideos?.[0]?.video?.uri ?? "";
 
     return { videoUri };
+  }
+
+  /** Returns the cached operation for this id, or synthesizes a real GenerateVideosOperation if none was cached yet. */
+  private requireOperation(operationName: string): GenerateVideosOperation {
+    return this.operations.get(operationName) ?? Object.assign(new GenerateVideosOperation(), { name: operationName });
   }
 }
 
@@ -490,15 +530,21 @@ export function __debugRepositoryState(label: string): { repoTraceId: string; pi
  * Constructs a fully wired MovieProductionService: real Gemini/Imagen/Veo
  * clients via @google/genai, a real Cloudinary client, a documented no-op
  * ElevenLabs client, and the complete director + production layer
- * dependency graph.
+ * dependency graph — or, when AI_MODE=development, mock services in place
+ * of Gemini/Imagen/Veo/ElevenLabs (see ../ai/providers/ProviderFactory.ts
+ * and ../ai/devmode/) so no paid AI API call happens.
  *
- * Throws MovieProductionFactoryError if required credentials
- * (GEMINI_API_KEY, CLOUDINARY_CLOUD_NAME/API_KEY/API_SECRET) are missing
- * from both `config` and process.env.
+ * Throws MovieProductionFactoryError if required credentials are missing
+ * from both `config` and process.env: GEMINI_API_KEY (skipped in Developer
+ * Mode, since nothing calls the real Gemini API then) and
+ * CLOUDINARY_CLOUD_NAME/API_KEY/API_SECRET (required in both modes —
+ * Cloudinary storage is unaffected by AI_MODE).
  */
 export function createMovieProductionService(config?: MovieProductionFactoryConfig): MovieProductionService {
+  const devMode = isDeveloperMode();
+
   const geminiApiKey = config?.geminiApiKey ?? process.env.GEMINI_API_KEY;
-  if (!geminiApiKey) {
+  if (!devMode && !geminiApiKey) {
     throw new MovieProductionFactoryError(
       "GEMINI_API_KEY is not configured (checked config.geminiApiKey and process.env.GEMINI_API_KEY)."
     );
@@ -514,13 +560,19 @@ export function createMovieProductionService(config?: MovieProductionFactoryConf
     );
   }
 
-  const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+  // In Developer Mode, geminiApiKey may be unset — no real GoogleGenAI call
+  // is ever made through it below (every real client construction below is
+  // a lazy thunk that ProviderFactory only invokes outside Developer Mode),
+  // so the placeholder key is never used.
+  const ai = new GoogleGenAI({ apiKey: geminiApiKey ?? "" });
 
-  // ── Provider services (real clients where available) ──
-  const geminiService = new GeminiService(new GoogleGenAIGeminiClient(ai));
-  const imagenService = new ImagenService(new GoogleGenAIImagenClient(ai));
-  const veoService = new VeoService(new GoogleGenAIVeoClient(ai));
-  const elevenLabsService = new ElevenLabsService(new NotConfiguredAudioClient());
+  // ── Provider services (ProviderFactory returns a mock in Developer Mode) ──
+  const geminiService = ProviderFactory.createGemini(() => new GeminiService(new GoogleGenAIGeminiClient(ai)));
+  const imagenService = ProviderFactory.createImagen(() => new ImagenService(new GoogleGenAIImagenClient(ai)));
+  const veoService = ProviderFactory.createVeo(() => new VeoService(new GoogleGenAIVeoClient(ai)));
+  const elevenLabsService = ProviderFactory.createElevenLabs(
+    () => new ElevenLabsService(new NotConfiguredAudioClient())
+  );
   const cloudinaryService = new CloudinaryService(
     new CloudinaryStorageClient(cloudinaryCloudName, cloudinaryApiKey, cloudinaryApiSecret)
   );

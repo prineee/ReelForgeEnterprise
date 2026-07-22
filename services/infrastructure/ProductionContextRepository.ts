@@ -24,6 +24,7 @@ import type { MovieBlueprint } from "../ai/director/DirectorEngine";
 import type { SceneGenerationRequest } from "../ai/production/ScenePromptBuilder";
 import type { GeneratedVideo } from "../ai/providers/google/VeoService";
 import type { MovieAssemblyResult } from "../ai/production/MovieAssembler";
+import type { RenderPlan } from "../ai/production/FinalMovieRenderer";
 
 /** Recorded when a stage throws, so getProgress() can report FAILED instead of leaving the dashboard stuck at QUEUED/0% forever. */
 export interface ProductionFailure {
@@ -55,9 +56,9 @@ export interface UploadedReferenceAsset {
  * — each stage owns and writes exactly one field (Stage 1 →
  * movieBlueprint, Stage 2 → uploadedReferenceAssets, Stage 3 →
  * sceneGenerationRequests, Stage 4 → generatedVideos, Stage 5 →
- * movieAssembly) and reads only the fields produced by earlier stages it
- * depends on. Only fields currently needed by an implemented stage exist
- * here — no speculative future fields.
+ * movieAssembly, Stage 6 → finalRenderPlan) and reads only the fields
+ * produced by earlier stages it depends on. Only fields currently needed
+ * by an implemented stage exist here — no speculative future fields.
  */
 export interface ProductionContext {
   productionId: ProductionId;
@@ -66,6 +67,7 @@ export interface ProductionContext {
   sceneGenerationRequests?: SceneGenerationRequest[];
   generatedVideos?: GeneratedVideo[];
   movieAssembly?: MovieAssemblyResult;
+  finalRenderPlan?: RenderPlan;
   /** Set when a stage throws — see ProductionFailure. Undefined means no failure has occurred. */
   failure?: ProductionFailure;
 }
