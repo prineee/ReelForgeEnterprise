@@ -70,6 +70,7 @@ import type {
   VeoResponse,
   GeneratedVideo,
 } from "../ai/providers/google/VeoService";
+import { LTXVideoClient } from "../ai/providers/ltx/LTXVideoClient";
 import { ElevenLabsService } from "../ai/providers/audio/ElevenLabsService";
 import type {
   AudioClient,
@@ -116,6 +117,17 @@ import type { AIOrchestrator } from "../orchestrator/AIOrchestrator";
 // actually verified to succeed on this key and is used here instead.
 const GEMINI_MODEL = "gemini-3.5-flash";
 const IMAGEN_MODEL = "imagen-4.0-generate-001";
+
+/**
+ * Selects which VeoClient implementation backs VeoService. Controlled by
+ * VIDEO_PROVIDER (GOOGLE | LTX), defaulting to GOOGLE when unset or
+ * unrecognized so existing deployments are unaffected.
+ */
+type VideoProvider = "GOOGLE" | "LTX";
+
+function resolveVideoProvider(): VideoProvider {
+  return process.env.VIDEO_PROVIDER?.toUpperCase() === "LTX" ? "LTX" : "GOOGLE";
+}
 
 /**
  * Optional overrides for credentials that otherwise fall back to
@@ -569,7 +581,10 @@ export function createMovieProductionService(config?: MovieProductionFactoryConf
   // ── Provider services (ProviderFactory returns a mock in Developer Mode) ──
   const geminiService = ProviderFactory.createGemini(() => new GeminiService(new GoogleGenAIGeminiClient(ai)));
   const imagenService = ProviderFactory.createImagen(() => new ImagenService(new GoogleGenAIImagenClient(ai)));
-  const veoService = ProviderFactory.createVeo(() => new VeoService(new GoogleGenAIVeoClient(ai)));
+  const videoProvider = resolveVideoProvider();
+  const veoService = ProviderFactory.createVeo(
+    () => new VeoService(videoProvider === "LTX" ? new LTXVideoClient() : new GoogleGenAIVeoClient(ai))
+  );
   const elevenLabsService = ProviderFactory.createElevenLabs(
     () => new ElevenLabsService(new NotConfiguredAudioClient())
   );
