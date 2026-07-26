@@ -128,7 +128,7 @@ export default async function BillingPage() {
         <p className="text-xs text-gray-500 mb-4">
           Indian users pay in ₹ via Razorpay · International users pay in $ via Stripe
         </p>
-        <BillingClient currentPlan={currentPlan} userEmail={user.email ?? ''} />
+        
       </div>
 
       {/* ── Free Plan Info ── */}

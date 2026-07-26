@@ -1,135 +1,147 @@
 import { NextResponse } from "next/server";
-import { PLANS } from "@/lib/payment/plans";
-
-async function getAccessToken() {
-  const clientId = process.env.PAYPAL_CLIENT_ID;
-  const clientSecret =
-    process.env.PAYPAL_CLIENT_SECRET;
-
-  if (!clientId || !clientSecret) {
-    throw new Error(
-      "PayPal credentials are missing"
-    );
-  }
-
-  const auth = Buffer.from(
-    `${clientId}:${clientSecret}`
-  ).toString("base64");
-
-  const response = await fetch(
-    "https://api-m.sandbox.paypal.com/v1/oauth2/token",
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Basic ${auth}`,
-        "Content-Type":
-          "application/x-www-form-urlencoded",
-      },
-      body: "grant_type=client_credentials",
-    }
-  );
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(
-      data.error_description ||
-        "Failed to get PayPal token"
-    );
-  }
-
-  return data.access_token;
-}
+import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
+import {
+  PLAN_BY_KEY,
+  getCommissionRate,
+  type PlanKey,
+} from "@/lib/plans";
 
 export async function POST(
   request: Request
 ) {
   try {
-    const { plan } =
-      await request.json();
+    const supabase = await createClient();
+    const admin = createAdminClient();
 
-    const planData =
-      PLANS[
-        plan as keyof typeof PLANS
-      ];
+    const users = admin.from("users") as any;
+    const payments = admin.from("payments") as any;
+    const referrals = admin.from("user_referrals") as any;
+    const affiliates = admin.from("affiliates") as any;
+    const sales = admin.from("affiliate_sales") as any;
 
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    const {
+      orderID,
+      amount,
+      plan,
+    } = await request.json();
+
+    const planData = PLAN_BY_KEY[plan as PlanKey];
     if (!planData) {
       return NextResponse.json(
-        {
-          error: "Invalid plan",
-        },
-        {
-          status: 400,
-        }
+        { error: "Invalid plan" },
+        { status: 400 }
       );
     }
 
-    const accessToken =
-      await getAccessToken();
+    await payments.insert({
+      user_id: user.id,
+      amount,
+      gateway: "paypal",
+      payment_provider: "paypal",
+      paypal_order_id: orderID,
+      currency: "USD",
+      status: "paid",
+    });
 
-    const response = await fetch(
-      "https://api-m.sandbox.paypal.com/v2/checkout/orders",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type":
-            "application/json",
-        },
-        body: JSON.stringify({
-          intent: "CAPTURE",
-          purchase_units: [
-            {
-              amount: {
-                currency_code: "USD",
-                value:
-                  planData.usd.toFixed(2),
-              },
-            },
-          ],
-        }),
-      }
-    );
+    const credits = planData.credits;
 
-    const order =
-      await response.json();
+    const {
+      data: existingUser,
+    } = await users
+      .select("credits")
+      .eq("id", user.id)
+      .single();
 
-    if (!response.ok) {
-      console.error(order);
+    await users
+      .update({
+        credits:
+          Number(
+            existingUser?.credits || 0
+          ) + credits,
+        // Store the normalized dbPlan (e.g. "enterprise" for the Agency
+        // plan), not the raw plan key — this is what Stripe/Razorpay's
+        // webhooks already write, so a user's stored plan value means the
+        // same thing regardless of which payment method they used.
+        plan: planData.dbPlan,
+      })
+      .eq("id", user.id);
 
-      return NextResponse.json(
-        {
-          error:
-            "Failed to create PayPal order",
-        },
-        {
-          status: 500,
-        }
-      );
+    const {
+      data: referral,
+    } = await referrals
+      .select("affiliate_id")
+      .eq("user_id", user.id)
+      .single();
+
+    if (referral?.affiliate_id) {
+      const rate =
+        getCommissionRate(plan);
+
+      const commission =
+        (Number(amount) * rate) / 100;
+
+      await sales.insert({
+        affiliate_id:
+          referral.affiliate_id,
+        customer_email:
+          user.email,
+        order_id: orderID,
+        plan_name: plan,
+        sale_amount: amount,
+        commission_rate: rate,
+        commission_amount:
+          commission,
+        currency: "USD",
+        status: "approved",
+      });
+
+      const {
+        data: affiliate,
+      } = await affiliates
+        .select("earnings")
+        .eq(
+          "id",
+          referral.affiliate_id
+        )
+        .single();
+
+      await affiliates
+        .update({
+          earnings:
+            Number(
+              affiliate?.earnings || 0
+            ) + commission,
+        })
+        .eq(
+          "id",
+          referral.affiliate_id
+        );
     }
-
-    const approvalLink =
-      order.links?.find(
-        (link: any) =>
-          link.rel === "approve"
-      );
 
     return NextResponse.json({
-      orderID: order.id,
-      approvalUrl:
-        approvalLink?.href,
+      success: true,
     });
-  } catch (err: any) {
+  } catch (err) {
     console.error(
-      "PAYPAL CREATE ORDER ERROR:",
+      "PAYPAL CAPTURE ERROR:",
       err
     );
 
     return NextResponse.json(
       {
-        error:
-          err.message ||
-          "Failed to create order",
+        error: "Payment Failed",
       },
       {
         status: 500,

@@ -10,8 +10,11 @@ export async function POST(request: Request) {
 
   const body = await request.json()
   const plan = body.plan as PlanKey
-  const planData = PLAN_BY_KEY[plan]
+    const planData = PLAN_BY_KEY[plan]
   if (!planData) return NextResponse.json({ error: 'Invalid plan' }, { status: 400 })
+  if (!planData.priceINR) {
+    return NextResponse.json({ error: `${planData.name} is not available via Razorpay yet` }, { status: 400 })
+  }
 
   const keyId = process.env.RAZORPAY_KEY_ID
   const keySecret = process.env.RAZORPAY_SECRET

@@ -89,11 +89,27 @@ export interface VeoOptions {
  * adapts the genuine Veo SDK to this shape elsewhere.
  */
 export interface VeoClient {
-  generate(request: VeoRequest): Promise<VeoResponse>;
-  checkStatus(operationId: string): Promise<VeoResponse>;
-  download(operationId: string): Promise<GeneratedVideo>;
-}
 
+  generate(
+    request: VeoRequest
+  ): Promise<VeoResponse>;
+
+  checkStatus(
+    operationId: string
+  ): Promise<VeoResponse>;
+
+  download(
+    operationId: string
+  ): Promise<GeneratedVideo>;
+
+  /**
+   * Provider Name
+   * Example:
+   * GOOGLE
+   * LTX
+   * HUNYUAN
+   */
+ }
 /**
  * Thrown when a Veo response fails validation, or when generateVideo() is
  * called for a generation that did not complete synchronously.
@@ -111,7 +127,10 @@ export class VeoServiceError extends Error {
  * translation — no polling, no retrying, no waiting, no orchestration.
  */
 export class VeoService {
-  constructor(private readonly client: VeoClient) {}
+  constructor(
+    private readonly client: VeoClient
+) {}
+
 
   /**
    * Calls generate() and validates the response. If the operation is

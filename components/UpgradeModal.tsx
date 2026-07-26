@@ -139,7 +139,7 @@ export default function UpgradeModal({ isOpen, onClose, reason, creditsRemaining
         </div>
 
         {/* Plans */}
-        <div className="p-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {PLANS.map(plan => {
             const isRzpLoading    = loading === `${plan.key}-rzp`
             const isStripeLoading = loading === `${plan.key}-stripe`
@@ -162,9 +162,12 @@ export default function UpgradeModal({ isOpen, onClose, reason, creditsRemaining
 
                 <p className="font-semibold text-base">{plan.name}</p>
 
-                <div className="flex items-baseline gap-1 mt-1 mb-4">
-                  <span className="text-xl font-extrabold">₹{plan.priceINR}</span>
-                  <span className="text-gray-500 text-xs">/ ${plan.priceUSD} · /mo</span>
+                                <div className="flex items-baseline gap-1 mt-1 mb-4">
+                  <span className="text-xl font-extrabold">${plan.priceUSD}</span>
+                  <span className="text-gray-500 text-xs">
+                    {plan.billing === 'monthly' ? '/mo' : 'one-time'}
+                    {plan.priceINR !== undefined && ` · ₹${plan.priceINR}`}
+                  </span>
                 </div>
 
                 <ul className="space-y-1.5 mb-5 flex-1">
@@ -176,19 +179,21 @@ export default function UpgradeModal({ isOpen, onClose, reason, creditsRemaining
                   ))}
                 </ul>
 
-                {/* Razorpay — INR */}
-                <button
-                  onClick={() => handleRazorpay(plan)}
-                  disabled={anyLoading}
-                  className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-medium bg-brand-600 hover:bg-brand-500 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed mb-2"
-                >
-                  {isRzpLoading ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <Wallet className="w-3.5 h-3.5" />
-                  )}
-                  Pay ₹{plan.priceINR}
-                </button>
+                                {/* Razorpay — INR, only when this plan has an INR price */}
+                {plan.priceINR !== undefined && (
+                  <button
+                    onClick={() => handleRazorpay(plan)}
+                    disabled={anyLoading}
+                    className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-medium bg-brand-600 hover:bg-brand-500 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed mb-2"
+                  >
+                    {isRzpLoading ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Wallet className="w-3.5 h-3.5" />
+                    )}
+                    Pay ₹{plan.priceINR}
+                  </button>
+                )}
 
                 {/* Stripe — USD */}
                 <button

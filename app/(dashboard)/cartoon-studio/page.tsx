@@ -105,7 +105,7 @@ export default function CartoonStudioPage() {
     <div style={{ maxWidth: 900, margin: '0 auto', padding: '24px 16px', color: '#fff' }}>
       {/* Header */}
       <div style={{ marginBottom: 32 }}>
-        <h1 style={{ fontSize: 28, fontWeight: 700, margin: 0 }}>🎬 Cartoon Story Studio</h1>
+        <h1 className="text-2xl font-bold mb-1">Cartoon Story Studio</h1>
         <p style={{ color: '#94a3b8', marginTop: 8, fontSize: 15 }}>
           Enter a story idea → AI generates characters, storyboard, and cartoon video
         </p>
