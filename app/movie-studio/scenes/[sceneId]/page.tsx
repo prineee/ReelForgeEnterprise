@@ -1,9 +1,10 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Clapperboard, Info } from "lucide-react";
+import { ArrowLeft, Camera, Clapperboard, Info } from "lucide-react";
 import { SceneStudioTabs } from "@/components/scene-studio/SceneStudioTabs";
 import { SceneOverviewPanel } from "@/components/scene-detail/SceneOverviewPanel";
-import { getSceneOverview } from "@/services/infrastructure/SceneStudioFactory";
+import { CameraInspectorPanel } from "@/components/camera-inspector/CameraInspectorPanel";
+import { getSceneOverview, getCameraInspector } from "@/services/infrastructure/SceneStudioFactory";
 
 /** Reads live server-side in-memory state per request — must not be statically prerendered. */
 export const dynamic = "force-dynamic";
@@ -19,6 +20,7 @@ export default async function SceneDetailPage({ params }: { params: Promise<{ sc
   const { sceneId } = await params;
   const overview = getSceneOverview(sceneId);
   if (!overview) notFound();
+  const camera = getCameraInspector(sceneId) ?? { cameraPlan: undefined, shotPresetName: undefined, cinematicStyleModifiers: [] };
 
   return (
     <div className="min-h-screen bg-surface px-4 py-8 text-white sm:px-8">
@@ -47,6 +49,12 @@ export default async function SceneDetailPage({ params }: { params: Promise<{ sc
               label: "Overview",
               icon: <Info className="h-3.5 w-3.5" />,
               content: <SceneOverviewPanel overview={overview} />,
+            },
+            {
+              id: "camera",
+              label: "Camera",
+              icon: <Camera className="h-3.5 w-3.5" />,
+              content: <CameraInspectorPanel camera={camera} />,
             },
           ]}
         />
