@@ -4,6 +4,7 @@ import { RenderCenterJobCard } from "@/components/render-dashboard/RenderCenterJ
 import { QueuePauseToggle } from "@/components/render-dashboard/QueuePauseToggle";
 import { JobDetailsPanel } from "@/components/job-details/JobDetailsPanel";
 import { JobActions } from "@/components/job-details/JobActions";
+import { FailureAnalysisPanel } from "@/components/job-details/FailureAnalysisPanel";
 import { RenderTimelinePipeline } from "@/components/render-timeline/RenderTimelinePipeline";
 import { ProviderMonitorGrid } from "@/components/provider-monitor/ProviderMonitorGrid";
 import { ProductionOverviewPanel } from "@/components/render-dashboard/ProductionOverviewPanel";
@@ -97,6 +98,7 @@ export default async function RenderCenterPage({ searchParams }: { searchParams:
               <div className="w-full shrink-0 space-y-3 xl:w-80">
                 <RenderTimelinePipeline progress={selectedJobDetail.progress} />
                 <JobDetailsPanel detail={selectedJobDetail} />
+                <FailureAnalysisPanel detail={selectedJobDetail} />
                 <JobActions detail={selectedJobDetail} />
               </div>
             )}
