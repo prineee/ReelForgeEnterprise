@@ -1,11 +1,12 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Film, Info, ShieldAlert, UserCircle2 } from "lucide-react";
+import { ArrowLeft, Film, ImageIcon, Info, ShieldAlert, UserCircle2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { CharacterStudioTabs } from "@/components/character-studio/CharacterStudioTabs";
 import { CharacterDetailPanel } from "@/components/character-detail/CharacterDetailPanel";
 import { MovieUsagePanel } from "@/components/character-detail/MovieUsagePanel";
 import { CharacterContinuityViewer } from "@/components/character-detail/CharacterContinuityViewer";
+import { VisualAppearancePanel } from "@/components/character-detail/VisualAppearancePanel";
 import { resolveCharacterProfile, getCharacterMovieUsage, getCharacterContinuity } from "@/services/infrastructure/CharacterStudioFactory";
 
 const ROLE_LABEL: Record<string, string> = { LEAD: "Lead", SUPPORTING: "Supporting", MINOR: "Minor" };
@@ -70,6 +71,12 @@ export default async function CharacterDetailPage({ params }: { params: Promise<
               label: "Continuity",
               icon: <ShieldAlert className="h-3.5 w-3.5" />,
               content: <CharacterContinuityViewer continuity={continuity} />,
+            },
+            {
+              id: "appearance",
+              label: "Visual Appearance",
+              icon: <ImageIcon className="h-3.5 w-3.5" />,
+              content: <VisualAppearancePanel character={profile.character} />,
             },
           ]}
         />
