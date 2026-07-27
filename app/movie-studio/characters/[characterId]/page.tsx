@@ -1,11 +1,12 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Film, Info, UserCircle2 } from "lucide-react";
+import { ArrowLeft, Film, Info, ShieldAlert, UserCircle2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { CharacterStudioTabs } from "@/components/character-studio/CharacterStudioTabs";
 import { CharacterDetailPanel } from "@/components/character-detail/CharacterDetailPanel";
 import { MovieUsagePanel } from "@/components/character-detail/MovieUsagePanel";
-import { resolveCharacterProfile, getCharacterMovieUsage } from "@/services/infrastructure/CharacterStudioFactory";
+import { CharacterContinuityViewer } from "@/components/character-detail/CharacterContinuityViewer";
+import { resolveCharacterProfile, getCharacterMovieUsage, getCharacterContinuity } from "@/services/infrastructure/CharacterStudioFactory";
 
 const ROLE_LABEL: Record<string, string> = { LEAD: "Lead", SUPPORTING: "Supporting", MINOR: "Minor" };
 
@@ -20,6 +21,7 @@ export default async function CharacterDetailPage({ params }: { params: Promise<
   const profile = resolveCharacterProfile(characterId);
   if (!profile) notFound();
   const movieUsage = getCharacterMovieUsage(characterId);
+  const continuity = getCharacterContinuity(characterId);
 
   return (
     <div className="min-h-screen bg-surface px-4 py-8 text-white sm:px-8">
@@ -62,6 +64,12 @@ export default async function CharacterDetailPage({ params }: { params: Promise<
               label: "Movie Usage",
               icon: <Film className="h-3.5 w-3.5" />,
               content: <MovieUsagePanel usage={movieUsage} />,
+            },
+            {
+              id: "continuity",
+              label: "Continuity",
+              icon: <ShieldAlert className="h-3.5 w-3.5" />,
+              content: <CharacterContinuityViewer continuity={continuity} />,
             },
           ]}
         />
