@@ -131,6 +131,7 @@ export default async function MovieWorkspacePage({
           timeline={plan.timeline}
           storyPlan={plan.storyPlan}
           musicPlan={assetCatalog.musicPlan}
+          continuity={plan.continuity}
           transitionNameFor={transitionNameFor}
           initialJobs={jobLookups}
         />

@@ -1,14 +1,16 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { LayoutGrid, GanttChartSquare, List } from "lucide-react";
+import { LayoutGrid, GanttChartSquare, List, ShieldAlert } from "lucide-react";
 import type { Scene, Character, Environment, CameraPlan, EmotionPlan } from "@/services/ai/director/OutputSchema";
 import type { MovieTimelinePlan } from "@/services/ai/director-engine/MovieTimelineBuilder";
 import type { StoryPlan } from "@/services/ai/director-engine/StoryPlanner";
+import type { ContinuityReport } from "@/services/ai/director-engine/SceneContinuityEngine";
 import type { MusicPlan } from "@/services/ai/asset-intelligence/MusicPlanner";
 import { StoryboardGrid } from "@/components/storyboard/StoryboardGrid";
 import { SceneStatusBadge, type SceneStatus } from "@/components/storyboard/SceneStatusBadge";
 import { StoryboardFilters, EMPTY_STORYBOARD_FILTERS, ALL, type StoryboardFilterState } from "@/components/storyboard/StoryboardFilters";
+import { ContinuityViewer } from "@/components/storyboard/ContinuityViewer";
 import { TimelineViewer } from "@/components/timeline/TimelineViewer";
 import { WorkspaceTabs } from "./WorkspaceTabs";
 
@@ -41,6 +43,7 @@ export interface WorkspaceCenterPanelProps {
   timeline: MovieTimelinePlan;
   storyPlan: StoryPlan;
   musicPlan: MusicPlan;
+  continuity: ContinuityReport;
   transitionNameFor: (transition: string) => string;
   initialJobs: readonly RenderJobLookup[];
 }
@@ -62,6 +65,7 @@ export function WorkspaceCenterPanel({
   timeline,
   storyPlan,
   musicPlan,
+  continuity,
   transitionNameFor,
   initialJobs,
 }: WorkspaceCenterPanelProps) {
@@ -192,6 +196,12 @@ export function WorkspaceCenterPanel({
               </table>
             </div>
           ),
+        },
+        {
+          id: "continuity",
+          label: "Continuity",
+          icon: <ShieldAlert className="h-3.5 w-3.5" />,
+          content: <ContinuityViewer report={continuity} />,
         },
       ]}
     />
