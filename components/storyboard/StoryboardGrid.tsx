@@ -18,6 +18,8 @@ export interface StoryboardGridProps {
   videoUrlFor: (sceneId: string) => string | undefined;
   onRenderScene?: (sceneId: string) => void;
   renderingSceneIds?: ReadonlySet<string>;
+  onSelectScene?: (sceneId: string) => void;
+  selectedSceneId?: string;
 }
 
 /**
@@ -38,6 +40,8 @@ export function StoryboardGrid({
   videoUrlFor,
   onRenderScene,
   renderingSceneIds,
+  onSelectScene,
+  selectedSceneId,
 }: StoryboardGridProps) {
   const [order, setOrder] = useState<string[]>(() => [...scenes].sort((a, b) => a.sceneNumber - b.sceneNumber).map((s) => s.id));
   const [draggedId, setDraggedId] = useState<string | null>(null);
@@ -98,8 +102,10 @@ export function StoryboardGrid({
               videoUrl={videoUrlFor(scene.id)}
               position={index + 1}
               isDragging={draggedId === sceneId}
+              isSelected={selectedSceneId === scene.id}
               onDragHandleStart={() => setDraggedId(sceneId)}
               onDragEnd={() => setDraggedId(null)}
+              onSelect={onSelectScene ? () => onSelectScene(scene.id) : undefined}
               onRender={onRenderScene ? () => onRenderScene(scene.id) : undefined}
               rendering={renderingSceneIds?.has(scene.id)}
             />

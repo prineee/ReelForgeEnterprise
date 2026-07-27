@@ -72,6 +72,7 @@ export function WorkspaceCenterPanel({
   const [jobs, setJobs] = useState<readonly RenderJobLookup[]>(initialJobs);
   const [renderingSceneIds, setRenderingSceneIds] = useState<Set<string>>(new Set());
   const [filters, setFilters] = useState<StoryboardFilterState>(EMPTY_STORYBOARD_FILTERS);
+  const [selectedSceneId, setSelectedSceneId] = useState<string | undefined>(undefined);
 
   function statusFor(sceneId: string): SceneStatus {
     return jobs.find((job) => job.sceneId === sceneId)?.status ?? "DRAFTED";
@@ -145,6 +146,8 @@ export function WorkspaceCenterPanel({
                 videoUrlFor={videoUrlFor}
                 onRenderScene={handleRenderScene}
                 renderingSceneIds={renderingSceneIds}
+                onSelectScene={setSelectedSceneId}
+                selectedSceneId={selectedSceneId}
               />
             </>
           ),
@@ -161,6 +164,7 @@ export function WorkspaceCenterPanel({
               scenes={scenes}
               cameraPlans={cameraPlans}
               transitionNameFor={transitionNameFor}
+              highlightSceneId={selectedSceneId}
             />
           ),
         },

@@ -7,6 +7,9 @@ export interface TimelineBlockProps {
   label: string;
   color: "scene" | "voice" | "music" | "transition";
   title?: string;
+  highlighted?: boolean;
+  /** Lets TimelineViewer scroll this block into view when it becomes the highlighted one (Module 6). */
+  innerRef?: (el: HTMLDivElement | null) => void;
 }
 
 const COLOR_CLASSES: Record<TimelineBlockProps["color"], string> = {
@@ -17,13 +20,15 @@ const COLOR_CLASSES: Record<TimelineBlockProps["color"], string> = {
 };
 
 /** Pure presentational block — position/width derived entirely from real timing data passed in, never estimated here. */
-export function TimelineBlock({ startSeconds, durationSeconds, pixelsPerSecond, label, color, title }: TimelineBlockProps) {
+export function TimelineBlock({ startSeconds, durationSeconds, pixelsPerSecond, label, color, title, highlighted, innerRef }: TimelineBlockProps) {
   return (
     <div
+      ref={innerRef}
       title={title ?? label}
       className={cn(
-        "absolute top-1 bottom-1 flex items-center overflow-hidden rounded-md border px-2 text-xs font-medium",
-        COLOR_CLASSES[color]
+        "absolute top-1 bottom-1 flex items-center overflow-hidden rounded-md border px-2 text-xs font-medium transition-shadow",
+        COLOR_CLASSES[color],
+        highlighted && "ring-2 ring-white ring-offset-1 ring-offset-surface"
       )}
       style={{
         left: startSeconds * pixelsPerSecond,

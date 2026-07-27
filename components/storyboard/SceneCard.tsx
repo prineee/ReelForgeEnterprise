@@ -35,8 +35,11 @@ export interface SceneCardProps {
   /** Current display position (1-based) in the storyboard — distinct from the persisted scene.sceneNumber, see note below. */
   position: number;
   isDragging?: boolean;
+  isSelected?: boolean;
   onDragHandleStart?: (event: DragEvent<HTMLDivElement>) => void;
   onDragEnd?: () => void;
+  /** Fired when the scene title is clicked — used to sync the Timeline tab's highlighted block (Module 6), in addition to the title's own navigation to `?scene=id`. */
+  onSelect?: () => void;
   onRender?: () => void;
   rendering?: boolean;
 }
@@ -62,15 +65,23 @@ export function SceneCard({
   videoUrl,
   position,
   isDragging,
+  isSelected,
   onDragHandleStart,
   onDragEnd,
+  onSelect,
   onRender,
   rendering,
 }: SceneCardProps) {
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <Card className={cn("flex h-full flex-col overflow-hidden transition-opacity", isDragging && "opacity-40")}>
+    <Card
+      className={cn(
+        "flex h-full flex-col overflow-hidden transition-opacity",
+        isDragging && "opacity-40",
+        isSelected && "ring-2 ring-brand-500"
+      )}
+    >
       {/* Thumbnail placeholder — no real per-scene thumbnail exists anywhere in the backend; a completed render's real video is linked below instead of faking a poster image. */}
       <div className="relative flex aspect-video w-full shrink-0 flex-col items-center justify-center border-b border-white/10 bg-gradient-to-br from-brand-900/60 to-purple-950/60">
         <Clapperboard className="h-7 w-7 text-white/30" />
@@ -108,6 +119,7 @@ export function SceneCard({
           <Link
             href={`?scene=${scene.id}`}
             scroll={false}
+            onClick={onSelect}
             className="truncate text-sm font-semibold text-white hover:text-brand-300 hover:underline"
             title="View scene properties in the right sidebar"
           >

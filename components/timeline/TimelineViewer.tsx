@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { Film, Mic, Music2, ArrowRightLeft, ZoomIn, ZoomOut } from "lucide-react";
 import type { Scene, CameraPlan } from "@/services/ai/director/OutputSchema";
 import type { MovieTimelinePlan } from "@/services/ai/director-engine/MovieTimelineBuilder";
@@ -18,6 +18,8 @@ export interface TimelineViewerProps {
   scenes: Scene[];
   cameraPlans: CameraPlan[];
   transitionNameFor: (transition: string) => string;
+  /** Scene selected in the Storyboard tab (Module 6) — highlights and scrolls to the matching Scenes-track block. Read-only, no editing. */
+  highlightSceneId?: string;
 }
 
 const MIN_PX_PER_SECOND = 2;
@@ -34,10 +36,16 @@ const DEFAULT_PX_PER_SECOND = 8;
  * real CameraPlan.transitionToNext, and act markers from StoryPlanner's
  * real StoryPlan.acts — nothing here is estimated or fabricated.
  */
-export function TimelineViewer({ timeline, storyPlan, musicPlan, scenes, cameraPlans, transitionNameFor }: TimelineViewerProps) {
+export function TimelineViewer({ timeline, storyPlan, musicPlan, scenes, cameraPlans, transitionNameFor, highlightSceneId }: TimelineViewerProps) {
   const [pixelsPerSecond, setPixelsPerSecond] = useState(DEFAULT_PX_PER_SECOND);
   const [playheadSeconds, setPlayheadSeconds] = useState(0);
   const trackAreaRef = useRef<HTMLDivElement>(null);
+  const sceneBlockRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  useEffect(() => {
+    if (!highlightSceneId) return;
+    sceneBlockRefs.current.get(highlightSceneId)?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+  }, [highlightSceneId]);
 
   const sceneById = useMemo(() => new Map(scenes.map((s) => [s.id, s])), [scenes]);
   const cameraPlanById = useMemo(() => new Map(cameraPlans.map((c) => [c.id, c])), [cameraPlans]);
@@ -114,6 +122,11 @@ export function TimelineViewer({ timeline, storyPlan, musicPlan, scenes, cameraP
                 pixelsPerSecond={pixelsPerSecond}
                 label={sceneById.get(entry.sceneId)?.title ?? `Scene ${entry.sceneNumber}`}
                 color="scene"
+                highlighted={entry.sceneId === highlightSceneId}
+                innerRef={(el) => {
+                  if (el) sceneBlockRefs.current.set(entry.sceneId, el);
+                  else sceneBlockRefs.current.delete(entry.sceneId);
+                }}
               />
             ))}
           </TimelineTrack>
