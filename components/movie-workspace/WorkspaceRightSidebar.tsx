@@ -1,6 +1,11 @@
 import { Info, Sparkles, Cpu } from "lucide-react";
 import type { Scene, CameraPlan, EmotionPlan, Environment } from "@/services/ai/director/OutputSchema";
 import type { DirectorProfile } from "@/services/ai/director-engine/DirectorProfile";
+import type { ContinuityIssue } from "@/services/ai/director-engine/SceneContinuityEngine";
+import type { PlannedMusicCue } from "@/services/ai/asset-intelligence/MusicPlanner";
+import type { ShotPreset } from "@/services/ai/asset-intelligence/ShotLibrary";
+import type { TransitionPreset } from "@/services/ai/asset-intelligence/TransitionLibrary";
+import { SceneDetailPanel } from "@/components/storyboard/SceneDetailPanel";
 import { WorkspaceTabs } from "./WorkspaceTabs";
 
 export interface SelectedSceneDetail {
@@ -9,6 +14,11 @@ export interface SelectedSceneDetail {
   emotionPlan?: EmotionPlan;
   environment?: Environment;
   characterNames: string[];
+  continuityIssues: readonly ContinuityIssue[];
+  musicCue?: PlannedMusicCue;
+  shotPreset?: ShotPreset;
+  transitionPreset?: TransitionPreset;
+  promptSummary?: string;
 }
 
 export interface WorkspaceRightSidebarProps {
@@ -28,29 +38,19 @@ export function WorkspaceRightSidebar({ selectedScene, directorProfile, activeVi
           label: "Scene",
           icon: <Info className="h-3.5 w-3.5" />,
           content: selectedScene ? (
-            <div className="space-y-3 text-xs">
-              <div>
-                <p className="text-sm font-semibold text-white">{selectedScene.scene.title ?? `Scene ${selectedScene.scene.sceneNumber}`}</p>
-                <p className="mt-1 text-zinc-400">{selectedScene.scene.description}</p>
-              </div>
-              <Row label="Duration" value={`${selectedScene.scene.durationSeconds ?? selectedScene.cameraPlan?.durationSeconds ?? 8}s`} />
-              <Row label="Location" value={selectedScene.environment?.name ?? selectedScene.scene.environmentId} />
-              <Row label="Characters" value={selectedScene.characterNames.join(", ") || "—"} />
-              {selectedScene.cameraPlan && (
-                <>
-                  <Row label="Shot" value={humanize(selectedScene.cameraPlan.shot)} />
-                  <Row label="Movement" value={selectedScene.cameraPlan.movement ? humanize(selectedScene.cameraPlan.movement) : "—"} />
-                  <Row label="Lens" value={selectedScene.cameraPlan.lens} />
-                  <Row label="Transition" value={humanize(selectedScene.cameraPlan.transitionToNext)} />
-                </>
-              )}
-              {selectedScene.emotionPlan && (
-                <>
-                  <Row label="Emotion" value={`${humanize(selectedScene.emotionPlan.dominantEmotion)} (${selectedScene.emotionPlan.intensity}/10)`} />
-                  <Row label="Pacing" value={selectedScene.emotionPlan.pacingNotes} />
-                </>
-              )}
-            </div>
+            <SceneDetailPanel
+              scene={selectedScene.scene}
+              cameraPlan={selectedScene.cameraPlan}
+              emotionPlan={selectedScene.emotionPlan}
+              environment={selectedScene.environment}
+              characterNames={selectedScene.characterNames}
+              continuityIssues={selectedScene.continuityIssues}
+              musicCue={selectedScene.musicCue}
+              shotPreset={selectedScene.shotPreset}
+              transitionPreset={selectedScene.transitionPreset}
+              directorProfile={directorProfile}
+              promptSummary={selectedScene.promptSummary}
+            />
           ) : (
             <p className="text-xs text-zinc-500">Click a scene title in the Storyboard to inspect its real properties here.</p>
           ),
@@ -99,10 +99,6 @@ function Row({ label, value }: { label: string; value: string }) {
       <span className="text-right text-zinc-300">{value}</span>
     </div>
   );
-}
-
-function humanize(value: string): string {
-  return value.toLowerCase().replace(/_/g, " ");
 }
 
 export default WorkspaceRightSidebar;

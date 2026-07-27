@@ -79,13 +79,19 @@ export default async function MovieWorkspacePage({
   const { statusLabel, statusVariant } = deriveMovieStatus(scenes.length, jobLookups);
 
   const selectedScene = selectedSceneId ? scenes.find((s) => s.id === selectedSceneId) : undefined;
+  const selectedSceneCameraPlan = selectedScene ? cameraPlans.find((c) => c.id === selectedScene.cameraPlanId) : undefined;
   const selectedSceneDetail: SelectedSceneDetail | undefined = selectedScene
     ? {
         scene: selectedScene,
-        cameraPlan: cameraPlans.find((c) => c.id === selectedScene.cameraPlanId),
+        cameraPlan: selectedSceneCameraPlan,
         emotionPlan: emotionPlans.find((e) => e.id === selectedScene.emotionPlanId),
         environment: environments.find((e) => e.id === selectedScene.environmentId),
         characterNames: selectedScene.characterIds.map((id) => characters.find((c) => c.id === id)?.name ?? id),
+        continuityIssues: plan.continuity.issues,
+        musicCue: assetCatalog.musicPlan.cues.find((cue) => cue.sceneId === selectedScene.id),
+        shotPreset: selectedSceneCameraPlan ? assetManager.getShotLibrary().matchCameraPlan(selectedSceneCameraPlan) : undefined,
+        transitionPreset: selectedSceneCameraPlan ? assetManager.getTransitionLibrary().get(selectedSceneCameraPlan.transitionToNext) : undefined,
+        promptSummary: plan.prompts.requests.find((request) => request.sceneId === selectedScene.id || request.sceneNumber === selectedScene.sceneNumber)?.positivePrompt,
       }
     : undefined;
 
