@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Camera, Clapperboard, Info, MapPin, Sun, Users, Boxes } from "lucide-react";
+import { ArrowLeft, Camera, Clapperboard, Info, MapPin, Sun, Users, Boxes, Cpu } from "lucide-react";
 import { SceneStudioTabs } from "@/components/scene-studio/SceneStudioTabs";
 import { SceneOverviewPanel } from "@/components/scene-detail/SceneOverviewPanel";
 import { CameraInspectorPanel } from "@/components/camera-inspector/CameraInspectorPanel";
@@ -8,6 +8,7 @@ import { LightingInspectorPanel } from "@/components/lighting-inspector/Lighting
 import { CharacterPlacementPanel } from "@/components/scene-detail/CharacterPlacementPanel";
 import { LocationInspectorPanel } from "@/components/location-inspector/LocationInspectorPanel";
 import { AssetInspectorPanel } from "@/components/asset-inspector/AssetInspectorPanel";
+import { ProductionPreviewPanel } from "@/components/scene-detail/ProductionPreviewPanel";
 import {
   getSceneOverview,
   getCameraInspector,
@@ -15,6 +16,7 @@ import {
   getCharacterPlacement,
   getLocationInspector,
   getAssetInspector,
+  getProductionPreview,
 } from "@/services/infrastructure/SceneStudioFactory";
 
 /** Reads live server-side in-memory state per request — must not be statically prerendered. */
@@ -42,6 +44,13 @@ export default async function SceneDetailPage({ params }: { params: Promise<{ sc
     musicCue: undefined,
     voiceAssignments: [],
     soundEffects: [],
+  };
+  const production = getProductionPreview(sceneId) ?? {
+    recommendedProvider: undefined,
+    estimatedCredits: undefined,
+    estimatedRenderTimeSeconds: undefined,
+    qualityScore: undefined,
+    continuityIssues: [],
   };
 
   return (
@@ -101,6 +110,12 @@ export default async function SceneDetailPage({ params }: { params: Promise<{ sc
               label: "Assets",
               icon: <Boxes className="h-3.5 w-3.5" />,
               content: <AssetInspectorPanel assets={assets} />,
+            },
+            {
+              id: "production",
+              label: "Production",
+              icon: <Cpu className="h-3.5 w-3.5" />,
+              content: <ProductionPreviewPanel preview={production} />,
             },
           ]}
         />
