@@ -5,7 +5,14 @@ import { QueuePauseToggle } from "@/components/render-dashboard/QueuePauseToggle
 import { JobDetailsPanel } from "@/components/job-details/JobDetailsPanel";
 import { JobActions } from "@/components/job-details/JobActions";
 import { ProviderMonitorGrid } from "@/components/provider-monitor/ProviderMonitorGrid";
-import { listRenderJobSummaries, getJobDetail, getProviderMonitor, type RenderJobSummary } from "@/services/infrastructure/RenderCenterFactory";
+import { ProductionOverviewPanel } from "@/components/render-dashboard/ProductionOverviewPanel";
+import {
+  listRenderJobSummaries,
+  getJobDetail,
+  getProviderMonitor,
+  getProductionOverview,
+  type RenderJobSummary,
+} from "@/services/infrastructure/RenderCenterFactory";
 import type { RenderJobStatus } from "@/services/rendering/types/RenderJob";
 
 /** Reads live server-side in-memory state (the shared RenderJobManager singleton) on every request — must not be statically prerendered. */
@@ -35,6 +42,7 @@ export default async function RenderCenterPage({ searchParams }: { searchParams:
   const jobs = listRenderJobSummaries();
   const selectedJobDetail = selectedJobId ? getJobDetail(selectedJobId) : undefined;
   const providers = getProviderMonitor();
+  const productionOverview = getProductionOverview();
 
   return (
     <div className="min-h-screen bg-surface px-4 py-8 text-white sm:px-8">
@@ -46,6 +54,8 @@ export default async function RenderCenterPage({ searchParams }: { searchParams:
           </div>
           <QueuePauseToggle />
         </div>
+
+        <ProductionOverviewPanel overview={productionOverview} />
 
         {jobs.length === 0 ? (
           <EmptyState
