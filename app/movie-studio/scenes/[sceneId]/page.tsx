@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Camera, Clapperboard, Info, MapPin, Sun, Users, Boxes, Cpu } from "lucide-react";
+import { ArrowLeft, Camera, Clapperboard, Info, MapPin, Sun, Users, Boxes, Cpu, Terminal } from "lucide-react";
 import { SceneStudioTabs } from "@/components/scene-studio/SceneStudioTabs";
 import { SceneOverviewPanel } from "@/components/scene-detail/SceneOverviewPanel";
 import { CameraInspectorPanel } from "@/components/camera-inspector/CameraInspectorPanel";
@@ -9,6 +9,7 @@ import { CharacterPlacementPanel } from "@/components/scene-detail/CharacterPlac
 import { LocationInspectorPanel } from "@/components/location-inspector/LocationInspectorPanel";
 import { AssetInspectorPanel } from "@/components/asset-inspector/AssetInspectorPanel";
 import { ProductionPreviewPanel } from "@/components/scene-detail/ProductionPreviewPanel";
+import { PromptViewerPanel } from "@/components/prompt-viewer/PromptViewerPanel";
 import {
   getSceneOverview,
   getCameraInspector,
@@ -17,6 +18,7 @@ import {
   getLocationInspector,
   getAssetInspector,
   getProductionPreview,
+  getPromptViewer,
 } from "@/services/infrastructure/SceneStudioFactory";
 
 /** Reads live server-side in-memory state per request — must not be statically prerendered. */
@@ -52,6 +54,7 @@ export default async function SceneDetailPage({ params }: { params: Promise<{ sc
     qualityScore: undefined,
     continuityIssues: [],
   };
+  const prompt = getPromptViewer(sceneId) ?? { positivePrompt: undefined, negativePrompt: undefined, aspectRatio: undefined, quality: undefined, expectedDuration: undefined };
 
   return (
     <div className="min-h-screen bg-surface px-4 py-8 text-white sm:px-8">
@@ -116,6 +119,12 @@ export default async function SceneDetailPage({ params }: { params: Promise<{ sc
               label: "Production",
               icon: <Cpu className="h-3.5 w-3.5" />,
               content: <ProductionPreviewPanel preview={production} />,
+            },
+            {
+              id: "prompt",
+              label: "Prompt",
+              icon: <Terminal className="h-3.5 w-3.5" />,
+              content: <PromptViewerPanel prompt={prompt} />,
             },
           ]}
         />
