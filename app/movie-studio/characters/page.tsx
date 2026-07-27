@@ -38,7 +38,7 @@ export default function CharacterStudioDashboardPage() {
         {characters.length === 0 ? (
           <EmptyState
             icon={<UsersRound className="h-7 w-7" />}
-            title="No characters yet"
+            title="No characters available"
             description="Open a movie's workspace to load its cast here — characters appear automatically once their movie reaches Character Development."
           />
         ) : (

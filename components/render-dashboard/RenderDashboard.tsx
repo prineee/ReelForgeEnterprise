@@ -54,7 +54,7 @@ export function RenderDashboard({ movieId, initialJobs = [] }: { movieId: string
     return (
       <EmptyState
         icon={<Film className="h-7 w-7" />}
-        title="No renders submitted yet"
+        title="No render jobs yet"
         description='Click "Render" on a scene in the Storyboard to submit a real render job.'
       />
     );

@@ -50,7 +50,7 @@ export function StoryboardGrid({
     return (
       <EmptyState
         icon={<Clapperboard className="h-7 w-7" />}
-        title="No scenes yet"
+        title="No storyboard available"
         description="This movie hasn't reached Scene Planning yet — scenes will appear here once the director pipeline drafts them."
       />
     );

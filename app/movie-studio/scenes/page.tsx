@@ -31,7 +31,7 @@ export default function SceneBrowserPage() {
         {scenes.length === 0 ? (
           <EmptyState
             icon={<Clapperboard className="h-7 w-7" />}
-            title="No scenes yet"
+            title="No scenes available"
             description="Open a movie's workspace to load its scenes here — they appear automatically once a movie reaches Scene Planning."
           />
         ) : (
