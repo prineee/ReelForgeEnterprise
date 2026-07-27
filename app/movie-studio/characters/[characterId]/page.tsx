@@ -1,10 +1,11 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Info, UserCircle2 } from "lucide-react";
+import { ArrowLeft, Film, Info, UserCircle2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { CharacterStudioTabs } from "@/components/character-studio/CharacterStudioTabs";
 import { CharacterDetailPanel } from "@/components/character-detail/CharacterDetailPanel";
-import { resolveCharacterProfile } from "@/services/infrastructure/CharacterStudioFactory";
+import { MovieUsagePanel } from "@/components/character-detail/MovieUsagePanel";
+import { resolveCharacterProfile, getCharacterMovieUsage } from "@/services/infrastructure/CharacterStudioFactory";
 
 const ROLE_LABEL: Record<string, string> = { LEAD: "Lead", SUPPORTING: "Supporting", MINOR: "Minor" };
 
@@ -18,6 +19,7 @@ export default async function CharacterDetailPage({ params }: { params: Promise<
   const { characterId } = await params;
   const profile = resolveCharacterProfile(characterId);
   if (!profile) notFound();
+  const movieUsage = getCharacterMovieUsage(characterId);
 
   return (
     <div className="min-h-screen bg-surface px-4 py-8 text-white sm:px-8">
@@ -54,6 +56,12 @@ export default async function CharacterDetailPage({ params }: { params: Promise<
               label: "Overview",
               icon: <Info className="h-3.5 w-3.5" />,
               content: <CharacterDetailPanel profile={profile} />,
+            },
+            {
+              id: "usage",
+              label: "Movie Usage",
+              icon: <Film className="h-3.5 w-3.5" />,
+              content: <MovieUsagePanel usage={movieUsage} />,
             },
           ]}
         />
