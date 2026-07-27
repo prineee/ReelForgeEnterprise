@@ -105,6 +105,7 @@ export interface CharacterTimelineResult {
   movieId: string;
   movieTitle: string;
   entries: (PlannedTimelineEntry & { sceneTitle?: string })[];
+  totalPlannedDurationSeconds: number;
 }
 
 export interface RelationshipMovieRef {
@@ -313,7 +314,12 @@ export function getCharacterTimeline(characterId: EntityId, movieId?: string): C
     .filter((timelineEntry) => characterSceneIds.has(timelineEntry.sceneId))
     .map((timelineEntry) => ({ ...timelineEntry, sceneTitle: sceneById.get(timelineEntry.sceneId)?.title }));
 
-  return { movieId: resolvedMovieId, movieTitle: movie.movie.title, entries };
+  return {
+    movieId: resolvedMovieId,
+    movieTitle: movie.movie.title,
+    entries,
+    totalPlannedDurationSeconds: directorPlan.plan.timeline.totalPlannedDurationSeconds,
+  };
 }
 
 /**

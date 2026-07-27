@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Film, ImageIcon, Info, Mic2, ShieldAlert, UserCircle2 } from "lucide-react";
+import { ArrowLeft, Film, GanttChartSquare, ImageIcon, Info, Mic2, ShieldAlert, UserCircle2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { CharacterStudioTabs } from "@/components/character-studio/CharacterStudioTabs";
 import { CharacterDetailPanel } from "@/components/character-detail/CharacterDetailPanel";
@@ -8,11 +8,13 @@ import { MovieUsagePanel } from "@/components/character-detail/MovieUsagePanel";
 import { CharacterContinuityViewer } from "@/components/character-detail/CharacterContinuityViewer";
 import { VisualAppearancePanel } from "@/components/character-detail/VisualAppearancePanel";
 import { VoicePreviewPanel } from "@/components/character-detail/VoicePreviewPanel";
+import { CharacterTimeline } from "@/components/character-timeline/CharacterTimeline";
 import {
   resolveCharacterProfile,
   getCharacterMovieUsage,
   getCharacterContinuity,
   getCharacterVoiceProfile,
+  getCharacterTimeline,
 } from "@/services/infrastructure/CharacterStudioFactory";
 
 const ROLE_LABEL: Record<string, string> = { LEAD: "Lead", SUPPORTING: "Supporting", MINOR: "Minor" };
@@ -30,6 +32,7 @@ export default async function CharacterDetailPage({ params }: { params: Promise<
   const movieUsage = getCharacterMovieUsage(characterId);
   const continuity = getCharacterContinuity(characterId);
   const voiceProfile = getCharacterVoiceProfile(characterId);
+  const timeline = getCharacterTimeline(characterId);
 
   return (
     <div className="min-h-screen bg-surface px-4 py-8 text-white sm:px-8">
@@ -90,6 +93,12 @@ export default async function CharacterDetailPage({ params }: { params: Promise<
               label: "Voice Preview",
               icon: <Mic2 className="h-3.5 w-3.5" />,
               content: <VoicePreviewPanel voice={voiceProfile} />,
+            },
+            {
+              id: "timeline",
+              label: "Timeline",
+              icon: <GanttChartSquare className="h-3.5 w-3.5" />,
+              content: <CharacterTimeline timeline={timeline} />,
             },
           ]}
         />
