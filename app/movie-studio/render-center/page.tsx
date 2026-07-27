@@ -9,12 +9,14 @@ import { RenderTimelinePipeline } from "@/components/render-timeline/RenderTimel
 import { ProviderMonitorGrid } from "@/components/provider-monitor/ProviderMonitorGrid";
 import { ProductionOverviewPanel } from "@/components/render-dashboard/ProductionOverviewPanel";
 import { QualityPanel } from "@/components/render-dashboard/QualityPanel";
+import { PerformanceAnalyticsCharts } from "@/components/render-analytics/PerformanceAnalyticsCharts";
 import {
   listRenderJobSummaries,
   getJobDetail,
   getProviderMonitor,
   getProductionOverview,
   listQualityPanels,
+  getPerformanceAnalytics,
   type RenderJobSummary,
 } from "@/services/infrastructure/RenderCenterFactory";
 import type { RenderJobStatus } from "@/services/rendering/types/RenderJob";
@@ -48,6 +50,7 @@ export default async function RenderCenterPage({ searchParams }: { searchParams:
   const providers = getProviderMonitor();
   const productionOverview = getProductionOverview();
   const qualityPanels = listQualityPanels();
+  const performanceAnalytics = getPerformanceAnalytics();
 
   return (
     <div className="min-h-screen bg-surface px-4 py-8 text-white sm:px-8">
@@ -106,6 +109,8 @@ export default async function RenderCenterPage({ searchParams }: { searchParams:
         )}
 
         <ProviderMonitorGrid providers={providers} />
+
+        <PerformanceAnalyticsCharts analytics={performanceAnalytics} />
       </div>
     </div>
   );
