@@ -138,8 +138,12 @@ function primaryMovieId(entry: CharacterLibraryEntry): string | undefined {
   return entry.movieIds[entry.movieIds.length - 1];
 }
 
-function roleFor(character: Character, movie: MovieBlueprint, characterLibraryEntries: readonly CharacterLibraryEntry[]): CastRole | undefined {
-  const castPlan = characterGenerator.plan(movie, characterLibraryEntries);
+function roleFor(character: Character, movie: MovieBlueprint, characterLibraryEntries: readonly CharacterLibraryEntry[], castPlanCache?: Map<string, ReturnType<CharacterGenerator["plan"]>>): CastRole | undefined {
+  let castPlan = castPlanCache?.get(movie.movie.id);
+  if (!castPlan) {
+    castPlan = characterGenerator.plan(movie, characterLibraryEntries);
+    castPlanCache?.set(movie.movie.id, castPlan);
+  }
   return castPlan.cast.find((member) => member.characterId === character.id)?.role;
 }
 
@@ -164,6 +168,7 @@ function favoriteCameraShotFor(characterId: EntityId, movie: MovieBlueprint): Ca
 export function listCharacterSummaries(): CharacterSummary[] {
   const characterLibrary = getSharedAssetManager().getCharacterLibrary();
   const entries = characterLibrary.list();
+  const castPlanCache = new Map<string, ReturnType<CharacterGenerator["plan"]>>();
 
   return entries
     .map((entry): CharacterSummary | undefined => {
@@ -183,7 +188,7 @@ export function listCharacterSummaries(): CharacterSummary[] {
       return {
         characterId: character.id,
         name: character.name,
-        role: roleFor(character, movie, entries),
+        role: roleFor(character, movie, entries, castPlanCache),
         gender: character.appearance.gender,
         age: character.appearance.age,
         voiceName: character.voiceProfile.voiceName,
