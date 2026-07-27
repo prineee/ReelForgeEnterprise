@@ -87,11 +87,11 @@ function StepIndicator({ current }: { current: number }) {
             <div className="flex items-center gap-1.5">
               <div className={cn('w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all',
                 done ? 'bg-brand-600 border-brand-600 text-white' :
-                active ? 'bg-brand-600/20 border-brand-500 text-brand-300' : 'bg-transparent border-surface-border text-gray-600')}>
+                active ? 'bg-brand-600/20 border-brand-500 text-brand-300' : 'bg-transparent border-surface-border text-gray-400')}>
                 {done ? <Check className="w-3 h-3" /> : idx}
               </div>
               <span className={cn('text-xs font-medium hidden sm:block max-w-[60px] truncate',
-                active ? 'text-white' : done ? 'text-brand-400' : 'text-gray-600')}>{label}</span>
+                active ? 'text-white' : done ? 'text-brand-400' : 'text-gray-400')}>{label}</span>
             </div>
             {i < STEPS.length - 1 && (
               <div className={cn('mx-1.5 sm:mx-2 h-px w-4 sm:w-6 transition-colors', current > idx ? 'bg-brand-600' : 'bg-surface-border')} />
@@ -121,7 +121,7 @@ function SceneCard({ scene, index, onChange }: { scene: Scene; index: number; on
       <div className="divide-y divide-surface-border">
         <div className="px-5 py-3">
           <div className="flex items-center gap-1.5 text-xs font-medium text-gray-400 mb-2">
-            <Mic className="w-3.5 h-3.5" /> Voiceover <span className="text-gray-600">(editable)</span>
+            <Mic className="w-3.5 h-3.5" /> Voiceover <span className="text-gray-400">(editable)</span>
           </div>
           <textarea className="input min-h-[80px] resize-y text-base sm:text-sm leading-relaxed" value={scene.voiceover} onChange={e => onChange(e.target.value)} />
         </div>
@@ -702,7 +702,7 @@ export default function CreateReelPage() {
                     selectedDuration.mins === opt.mins ? 'border-brand-500 bg-brand-600/15 text-white' : 'border-surface-border text-gray-400 hover:border-brand-700/60 hover:text-white'
                   )}>
                     <span>{opt.label}</span>
-                    <span className={cn('text-xs font-normal', selectedDuration.mins === opt.mins ? 'text-brand-300' : 'text-gray-600')}>{opt.credits}cr</span>
+                    <span className={cn('text-xs font-normal', selectedDuration.mins === opt.mins ? 'text-brand-300' : 'text-gray-400')}>{opt.credits}cr</span>
                   </button>
                 ))}
               </div>
@@ -783,7 +783,7 @@ export default function CreateReelPage() {
             <div className="flex items-center gap-2 text-sm text-gray-400 bg-surface-card border border-surface-border rounded-lg px-4 py-3">
               <Check className="w-4 h-4 text-brand-400 shrink-0" />
               Selected: <span className="text-white font-medium">{activeVoiceObj.name}</span>
-              <span className="text-gray-600 capitalize">({[activeVoiceObj.accent, activeVoiceObj.gender].filter(Boolean).join(' ')})</span>
+              <span className="text-gray-400 capitalize">({[activeVoiceObj.accent, activeVoiceObj.gender].filter(Boolean).join(' ')})</span>
             </div>
           )}
           <div className="flex items-center justify-between pt-1 flex-wrap gap-3">
@@ -845,7 +845,7 @@ export default function CreateReelPage() {
                   </div>
                   <div className="flex-1">
                     <p className="text-sm text-gray-400">No avatar selected</p>
-                    <p className="text-xs text-gray-600">Without an avatar, stock video clips will be used</p>
+                    <p className="text-xs text-gray-400">Without an avatar, stock video clips will be used</p>
                   </div>
                   <Link href="/avatar-studio">
                     <Button variant="secondary" size="sm">Browse</Button>
@@ -889,7 +889,7 @@ export default function CreateReelPage() {
                   </div>
                   <div className="flex-1">
                     <p className="text-sm text-gray-400">No background selected</p>
-                    <p className="text-xs text-gray-600">A dark background will be used by default</p>
+                    <p className="text-xs text-gray-400">A dark background will be used by default</p>
                   </div>
                   <Link href="/media-library">
                     <Button variant="secondary" size="sm">Browse</Button>
@@ -1061,7 +1061,7 @@ export default function CreateReelPage() {
                   <p className="text-base font-semibold">
                     {usingHeyGen ? 'HeyGen avatar rendering…' : `Generating your ${selectedDuration.label} reel…`}
                   </p>
-                  {heyGenVideoId && <p className="text-xs text-gray-600">Video ID: {heyGenVideoId}</p>}
+                  {heyGenVideoId && <p className="text-xs text-gray-400">Video ID: {heyGenVideoId}</p>}
                   <p className="text-xs text-gray-500 mb-4">{videoStepLabel || 'Starting pipeline…'}</p>
                   <div className="flex justify-between text-xs text-gray-500 mb-1"><span>Progress</span><span>{Math.round(videoProgress)}%</span></div>
                   <div className="h-2.5 bg-surface rounded-full overflow-hidden mb-4">
@@ -1072,7 +1072,7 @@ export default function CreateReelPage() {
                       {VIDEO_STEPS.map(s => {
                         const done = videoProgress > s.threshold; const current = videoCurrentStep === s.key
                         return (
-                          <div key={s.key} className={cn('flex items-center gap-2.5 text-sm', done ? 'text-brand-400' : current ? 'text-white' : 'text-gray-600')}>
+                          <div key={s.key} className={cn('flex items-center gap-2.5 text-sm', done ? 'text-brand-400' : current ? 'text-white' : 'text-gray-400')}>
                             {done ? <Check className="w-4 h-4 shrink-0" /> :
                              current ? <Loader2 className="w-4 h-4 shrink-0 animate-spin" /> :
                              <div className="w-4 h-4 shrink-0 rounded-full border border-current" />}

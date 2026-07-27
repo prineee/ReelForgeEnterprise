@@ -28,7 +28,7 @@ export interface SceneBrowserToolbarProps {
   onChange: (next: SceneBrowserFilterState) => void;
 }
 
-const SELECT_CLASS = "rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs text-zinc-300 outline-none focus:border-brand-500";
+const SELECT_CLASS = "rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs text-zinc-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-500";
 
 /** Module 1 — pure client-side search/filter/sort over SceneBrowserSummary[] already fetched server-side; no new data source. */
 export function SceneBrowserToolbar({ movies, statuses, value, onChange }: SceneBrowserToolbarProps) {
@@ -47,7 +47,7 @@ export function SceneBrowserToolbar({ movies, statuses, value, onChange }: Scene
           value={value.search}
           onChange={(e) => set("search", e.target.value)}
           placeholder="Search scenes, movies, characters…"
-          className="w-56 rounded-lg border border-white/10 bg-white/5 py-1.5 pl-8 pr-2.5 text-xs text-zinc-300 outline-none placeholder:text-zinc-600 focus:border-brand-500"
+          className="w-56 rounded-lg border border-white/10 bg-white/5 py-1.5 pl-8 pr-2.5 text-xs text-zinc-300 outline-none placeholder:text-zinc-600 focus-visible:ring-2 focus-visible:ring-brand-500"
         />
       </div>
 

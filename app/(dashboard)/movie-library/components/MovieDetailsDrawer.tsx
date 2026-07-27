@@ -123,7 +123,7 @@ export function MovieDetailsDrawer({ movie, onClose }: { movie: LibraryMovie | n
                       ) : (
                         <Circle className="w-4 h-4 text-gray-600 shrink-0" />
                       )}
-                      <span className={entry.done ? 'text-gray-200' : 'text-gray-600'}>{entry.label}</span>
+                      <span className={entry.done ? 'text-gray-200' : 'text-gray-400'}>{entry.label}</span>
                     </li>
                   ))}
                 </ol>
@@ -140,7 +140,7 @@ export function MovieDetailsDrawer({ movie, onClose }: { movie: LibraryMovie | n
                         'flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs',
                         asset.available
                           ? 'border-emerald-800/60 bg-emerald-950/30 text-emerald-300'
-                          : 'border-white/5 bg-white/[0.02] text-gray-600'
+                          : 'border-white/5 bg-white/[0.02] text-gray-400'
                       )}
                     >
                       <span className="truncate">{asset.label}</span>

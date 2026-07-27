@@ -201,7 +201,7 @@ const referralCode =
           </p>
 
           {error && (
-            <div className="bg-red-950/50 border border-red-800 text-red-400 text-sm rounded-lg p-3 mb-6">
+            <div role="alert" className="bg-red-950/50 border border-red-800 text-red-400 text-sm rounded-lg p-3 mb-6">
               {error}
             </div>
           )}
@@ -239,11 +239,12 @@ const referralCode =
             className="space-y-4"
           >
             <div>
-              <label className="label">
+              <label className="label" htmlFor="register-name">
                 Full Name
               </label>
 
               <input
+                id="register-name"
                 type="text"
                 value={name}
                 onChange={(e) =>
@@ -258,11 +259,12 @@ const referralCode =
             </div>
 
             <div>
-              <label className="label">
+              <label className="label" htmlFor="register-email">
                 Email
               </label>
 
               <input
+                id="register-email"
                 type="email"
                 value={email}
                 onChange={(e) =>
@@ -277,12 +279,13 @@ const referralCode =
             </div>
 
             <div>
-              <label className="label">
+              <label className="label" htmlFor="register-password">
                 Password
               </label>
 
               <div className="relative">
                 <input
+                  id="register-password"
                   type={
                     showPass
                       ? 'text'

@@ -52,7 +52,7 @@ export function ProductionTimeline({ production }: { production: DashboardProduc
                       {entry.label}
                     </p>
                     {!isDone && !isRunning && !isFailed && (
-                      <p className="text-xs text-gray-600">Waiting…</p>
+                      <p className="text-xs text-gray-400">Waiting…</p>
                     )}
                     {isRunning && <p className="text-xs text-brand-400">In progress…</p>}
                     {isFailed && <p className="text-xs text-red-400">Failed</p>}

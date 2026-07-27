@@ -55,7 +55,7 @@ export function MovieFilters({
         <select
           value={sort}
           onChange={(e) => onSortChange(e.target.value as SortOption)}
-          className="bg-surface-card border border-surface-border rounded-lg px-2.5 py-1.5 text-xs text-gray-200 focus:outline-none focus:border-brand-600"
+          className="bg-surface-card border border-surface-border rounded-lg px-2.5 py-1.5 text-xs text-gray-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
         >
           {SORTS.map((s) => (
             <option key={s.value} value={s.value}>

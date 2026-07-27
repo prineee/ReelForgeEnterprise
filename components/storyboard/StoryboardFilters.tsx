@@ -33,7 +33,7 @@ export interface StoryboardFiltersProps {
 }
 
 const SELECT_CLASS =
-  "rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs text-zinc-300 outline-none focus:border-brand-500";
+  "rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs text-zinc-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-500";
 
 /** Module 4 — pure client-side filtering over data StoryboardGrid already receives; adds no new data source. */
 export function StoryboardFilters({ characters, environments, statuses, value, onChange }: StoryboardFiltersProps) {

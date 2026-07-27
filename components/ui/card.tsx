@@ -1,4 +1,4 @@
-import { HTMLAttributes, ReactNode } from "react";
+import { HTMLAttributes, KeyboardEvent, MouseEvent, ReactNode } from "react";
 
 interface Props extends HTMLAttributes<HTMLDivElement> {
   children: ReactNode;
@@ -7,10 +7,24 @@ interface Props extends HTMLAttributes<HTMLDivElement> {
 }
 
 // Shadcn-style structural primitives consumed across the dashboard.
-export function Card({ children, className = "", hover = false, ...rest }: Props) {
+export function Card({ children, className = "", hover = false, onClick, ...rest }: Props) {
+  const interactive = typeof onClick === "function";
+
+  function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (!interactive) return;
+    if (event.key === "Enter" || event.key === " ") {
+      if (event.key === " ") event.preventDefault();
+      onClick?.(event as unknown as MouseEvent<HTMLDivElement>);
+    }
+  }
+
   return (
     <div
       {...rest}
+      onClick={onClick}
+      role={interactive ? "button" : undefined}
+      tabIndex={interactive ? 0 : undefined}
+      onKeyDown={interactive ? handleKeyDown : undefined}
       className={`
         rounded-3xl
         border

@@ -83,11 +83,11 @@ function StepIndicator({ current }: { current: number }) {
             <div className="flex items-center gap-1.5">
               <div className={cn('w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all',
                 done ? 'bg-brand-600 border-brand-600 text-white' :
-                active ? 'bg-brand-600/20 border-brand-500 text-brand-300' : 'bg-transparent border-surface-border text-gray-600')}>
+                active ? 'bg-brand-600/20 border-brand-500 text-brand-300' : 'bg-transparent border-surface-border text-gray-400')}>
                 {done ? <Check className="w-3 h-3" /> : idx}
               </div>
               <span className={cn('text-xs font-medium hidden sm:block',
-                active ? 'text-white' : done ? 'text-brand-400' : 'text-gray-600')}>{label}</span>
+                active ? 'text-white' : done ? 'text-brand-400' : 'text-gray-400')}>{label}</span>
             </div>
             {i < STEPS.length - 1 && (
               <div className={cn('mx-2 h-px w-6 transition-colors', current > idx ? 'bg-brand-600' : 'bg-surface-border')} />
@@ -117,7 +117,7 @@ function EpisodeCard({ episode, index, onTitleChange, onPlotChange }: {
         </div>
         <div className="flex-1 min-w-0">
           <input
-            className="bg-transparent text-sm font-semibold text-white w-full outline-none placeholder-gray-600 border-b border-transparent focus:border-brand-700"
+            className="bg-transparent text-sm font-semibold text-white w-full outline-none placeholder-gray-600 border-b border-transparent focus-visible:ring-2 focus-visible:ring-brand-500 rounded"
             value={episode.title}
             onChange={e => onTitleChange(e.target.value)}
             placeholder="Episode title"
@@ -146,7 +146,7 @@ function EpisodeCard({ episode, index, onTitleChange, onPlotChange }: {
           {episode.scenes.map(scene => (
             <div key={scene.scene_number} className="px-4 py-2.5">
               <div className="flex items-center gap-2 mb-1">
-                <span className="text-xs font-bold text-gray-600">{scene.scene_number}</span>
+                <span className="text-xs font-bold text-gray-400">{scene.scene_number}</span>
                 <span className="text-xs font-medium text-white">{scene.title}</span>
                 <Badge variant="info" className="text-xs ml-auto">{scene.camera_angle}</Badge>
               </div>

@@ -259,7 +259,7 @@ export default function BillingClient({ currentPlan, userEmail }: Props) {
         })}
       </div>
 
-      <p className="text-xs text-gray-600 text-center">
+      <p className="text-xs text-gray-400 text-center">
         Indian users: pay in ₹ via Razorpay (UPI · Cards · Net banking)
         &nbsp;·&nbsp;
         International: pay in $ via Stripe

@@ -85,7 +85,7 @@ export function SceneCard({
       {/* Thumbnail placeholder — no real per-scene thumbnail exists anywhere in the backend; a completed render's real video is linked below instead of faking a poster image. */}
       <div className="relative flex aspect-video w-full shrink-0 flex-col items-center justify-center border-b border-white/10 bg-gradient-to-br from-brand-900/60 to-purple-950/60">
         <Clapperboard className="h-7 w-7 text-white/30" />
-        <span className="mt-1 text-xs font-bold text-white/40">Scene {scene.sceneNumber}</span>
+        <span className="mt-1 text-xs font-bold text-white/70">Scene {scene.sceneNumber}</span>
 
         <div className="absolute left-2 top-2">
           <SceneStatusBadge status={status} />

@@ -144,7 +144,7 @@ function ProjectModal({
             <div className="text-center py-14">
               <FolderOpen className="w-10 h-10 text-gray-600 mx-auto mb-3" />
               <p className="text-sm text-gray-500">No content available for this project yet.</p>
-              <p className="text-xs text-gray-600 mt-1">
+              <p className="text-xs text-gray-400 mt-1">
                 Content is saved here once generation is complete.
               </p>
             </div>
@@ -209,7 +209,7 @@ function ProjectModal({
                   <div className="flex items-center gap-2 text-sm font-semibold text-gray-300">
                     <BookMarked className="w-4 h-4 text-brand-400" />
                     Script
-                    <span className="text-gray-600 font-normal">— {scenes.length} scenes</span>
+                    <span className="text-gray-400 font-normal">— {scenes.length} scenes</span>
                   </div>
                   {scenes.map((scene, i) => (
                     <div
@@ -225,7 +225,7 @@ function ProjectModal({
                         </div>
                         <span className="text-xs font-semibold text-gray-300">{scene.title}</span>
                         {scene.duration && (
-                          <span className="text-xs text-gray-600">{scene.duration}</span>
+                          <span className="text-xs text-gray-400">{scene.duration}</span>
                         )}
                       </div>
                       <p className="text-sm text-gray-200 leading-relaxed pl-8">
@@ -364,7 +364,7 @@ export default function ProjectsClient({ initialProjects }: { initialProjects: P
 
               <div className="flex items-center justify-between pt-1 border-t border-surface-border">
                 <Badge variant="default" className="text-xs capitalize">{p.type}</Badge>
-                <span className="text-xs text-gray-600 italic">Click to view</span>
+                <span className="text-xs text-gray-400 italic">Click to view</span>
               </div>
             </CardContent>
           </Card>

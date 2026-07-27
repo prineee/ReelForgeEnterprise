@@ -224,7 +224,7 @@ export default function CinemaStudioPage() {
               <div className="w-20 h-20 rounded-2xl bg-surface border border-surface-border flex items-center justify-center">
                 <Film className="w-10 h-10 text-gray-600" />
               </div>
-              <p className="text-gray-500 text-sm text-center">Your scene will appear here<br /><span className="text-gray-600 text-xs">Configure settings and click Generate</span></p>
+              <p className="text-gray-500 text-sm text-center">Your scene will appear here<br /><span className="text-gray-400 text-xs">Configure settings and click Generate</span></p>
             </div>
           )}
 
@@ -289,7 +289,7 @@ export default function CinemaStudioPage() {
                 </div>
                 <div className="p-2">
                   <p className="text-xs text-gray-400 truncate">{h.prompt_used}</p>
-                  <p className="text-xs text-gray-600">{h.settings.genre} · {h.settings.duration}s</p>
+                  <p className="text-xs text-gray-400">{h.settings.genre} · {h.settings.duration}s</p>
                 </div>
               </div>
             ))}

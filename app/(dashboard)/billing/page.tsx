@@ -87,7 +87,7 @@ export default async function BillingPage() {
               <div className="flex items-center justify-between mb-1.5">
                 <span className="text-xs text-gray-400">Credits remaining</span>
                 <span className="text-xs font-semibold text-white">
-                  {credits} <span className="text-gray-600 font-normal">/ {maxCredits}</span>
+                  {credits} <span className="text-gray-400 font-normal">/ {maxCredits}</span>
                 </span>
               </div>
               <div className="h-2 bg-surface rounded-full overflow-hidden">

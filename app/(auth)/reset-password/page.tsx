@@ -107,9 +107,10 @@ export default function ResetPasswordPage() {
 
               <form onSubmit={handleReset} className="space-y-4">
                 <div>
-                  <label className="label">New Password</label>
+                  <label className="label" htmlFor="reset-new-password">New Password</label>
                   <div className="relative">
                     <input
+                      id="reset-new-password"
                       type={showPassword ? 'text' : 'password'}
                       className="input pr-10"
                       placeholder="Min. 8 characters"
@@ -129,8 +130,9 @@ export default function ResetPasswordPage() {
                 </div>
 
                 <div>
-                  <label className="label">Confirm Password</label>
+                  <label className="label" htmlFor="reset-confirm-password">Confirm Password</label>
                   <input
+                    id="reset-confirm-password"
                     type={showPassword ? 'text' : 'password'}
                     className="input"
                     placeholder="Repeat password"
