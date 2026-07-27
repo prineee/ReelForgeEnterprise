@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from 'react'
 import Link from 'next/link'
+import { ArrowLeft } from 'lucide-react'
 
 interface DialogueLine {
   speaker: string
@@ -254,8 +255,11 @@ export function StoryboardView({ story, characters, scenes: initialScenes }: Pro
 
       {/* Back + Header */}
       <div style={{ marginBottom: 24 }}>
-        <Link href="/cartoon-studio" style={{ color: '#94a3b8', fontSize: 13, textDecoration: 'none' }}>
-          ← Back to Cartoon Studio
+        <Link
+          href="/cartoon-studio"
+          style={{ color: '#94a3b8', fontSize: 13, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+        >
+          <ArrowLeft size={14} /> Back to Cartoon Studio
         </Link>
         <h1 style={{ fontSize: 26, fontWeight: 700, margin: '10px 0 8px' }}>{story.title}</h1>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
