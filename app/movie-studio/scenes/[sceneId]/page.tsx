@@ -10,6 +10,7 @@ import { LocationInspectorPanel } from "@/components/location-inspector/Location
 import { AssetInspectorPanel } from "@/components/asset-inspector/AssetInspectorPanel";
 import { ProductionPreviewPanel } from "@/components/scene-detail/ProductionPreviewPanel";
 import { PromptViewerPanel } from "@/components/prompt-viewer/PromptViewerPanel";
+import { SceneNavigationBar } from "@/components/scene-studio/SceneNavigationBar";
 import {
   getSceneOverview,
   getCameraInspector,
@@ -19,6 +20,7 @@ import {
   getAssetInspector,
   getProductionPreview,
   getPromptViewer,
+  getSceneNavigation,
 } from "@/services/infrastructure/SceneStudioFactory";
 
 /** Reads live server-side in-memory state per request — must not be statically prerendered. */
@@ -26,10 +28,9 @@ export const dynamic = "force-dynamic";
 
 /**
  * Scene Studio detail screen — composes Modules 2-9 as tabs over one
- * already-resolved scene. Every module's panel is added here as its own
- * sprint milestone; this file grows one tab per module rather than each
- * module inventing its own page. Module 10 (navigation) lives in the
- * header, not a tab.
+ * already-resolved scene, plus Module 10 (SceneNavigationBar) as a
+ * persistent header bar rather than a tab, since previous/next/jump
+ * links are useful regardless of which tab is active.
  */
 export default async function SceneDetailPage({ params }: { params: Promise<{ sceneId: string }> }) {
   const { sceneId } = await params;
@@ -55,6 +56,7 @@ export default async function SceneDetailPage({ params }: { params: Promise<{ sc
     continuityIssues: [],
   };
   const prompt = getPromptViewer(sceneId) ?? { positivePrompt: undefined, negativePrompt: undefined, aspectRatio: undefined, quality: undefined, expectedDuration: undefined };
+  const navigation = getSceneNavigation(sceneId) ?? { movieId: overview.movieId, previousSceneId: undefined, nextSceneId: undefined, characterLinks: [] };
 
   return (
     <div className="min-h-screen bg-surface px-4 py-8 text-white sm:px-8">
@@ -75,6 +77,8 @@ export default async function SceneDetailPage({ params }: { params: Promise<{ sc
             </div>
           </div>
         </div>
+
+        <SceneNavigationBar navigation={navigation} />
 
         <SceneStudioTabs
           tabs={[
