@@ -43,7 +43,7 @@ import { VoicePlanner, type VoicePlanIssue } from "../ai/asset-intelligence/Voic
 import type { AssetNode, AssetNodeType } from "../ai/asset-intelligence/AssetDependencyGraph";
 import type { ContinuityIssue } from "../ai/director-engine/SceneContinuityEngine";
 import type { PlannedTimelineEntry } from "../ai/director-engine/MovieTimelineBuilder";
-import type { Character, EntityId } from "../ai/director/OutputSchema";
+import type { Character, EntityId, CameraShot } from "../ai/director/OutputSchema";
 import type { MovieBlueprint } from "../ai/director/DirectorEngine";
 import type { CharacterLibraryEntry } from "../ai/asset-intelligence/CharacterLibrary";
 import type { ProductionContext } from "./ProductionContextRepository";
@@ -70,6 +70,8 @@ export interface CharacterProfile {
   primaryMovieId: string;
   primaryMovieTitle: string;
   role?: CastRole;
+  /** Most frequent CameraPlan.shot across scenes where this character is the camera's focus subject (CameraPlan.focusSubject.characterId) — a derived aggregate, not a stored preference. Undefined when the character is never the focus subject of any planned shot. */
+  favoriteCameraShot?: CameraShot;
 }
 
 export interface MovieUsageEntry {
@@ -140,6 +142,23 @@ function roleFor(character: Character, movie: MovieBlueprint, characterLibraryEn
   return castPlan.cast.find((member) => member.characterId === character.id)?.role;
 }
 
+function favoriteCameraShotFor(characterId: EntityId, movie: MovieBlueprint): CameraShot | undefined {
+  const counts = new Map<CameraShot, number>();
+  for (const cameraPlan of movie.cameraPlans) {
+    if (cameraPlan.focusSubject.characterId !== characterId) continue;
+    counts.set(cameraPlan.shot, (counts.get(cameraPlan.shot) ?? 0) + 1);
+  }
+  let best: CameraShot | undefined;
+  let bestCount = 0;
+  for (const [shot, count] of counts) {
+    if (count > bestCount) {
+      best = shot;
+      bestCount = count;
+    }
+  }
+  return best;
+}
+
 /** Module 1 — every character resident in the shared CharacterLibrary, resolved against its most recently registered movie. */
 export function listCharacterSummaries(): CharacterSummary[] {
   const characterLibrary = getSharedAssetManager().getCharacterLibrary();
@@ -194,6 +213,7 @@ export function resolveCharacterProfile(characterId: EntityId): CharacterProfile
     primaryMovieId: movieId,
     primaryMovieTitle: movie.movie.title,
     role: roleFor(character, movie, characterLibrary.list()),
+    favoriteCameraShot: favoriteCameraShotFor(characterId, movie),
   };
 }
 
