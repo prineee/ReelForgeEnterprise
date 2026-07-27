@@ -7,15 +7,6 @@ export default function AdminPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
         <a
-          href="/admin/users"
-          className="rounded-xl border p-6 hover:bg-slate-900"
-        >
-          <h2 className="text-xl font-semibold">
-            Users
-          </h2>
-        </a>
-
-        <a
           href="/admin/affiliate-payouts"
           className="rounded-xl border p-6 hover:bg-slate-900"
         >

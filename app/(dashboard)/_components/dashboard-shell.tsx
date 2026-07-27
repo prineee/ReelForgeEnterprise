@@ -9,6 +9,7 @@ import {
   Users, CreditCard, Menu, X, ChevronRight,
   Film, Tv, User, Library, BookMarked,
   Zap, Share2, Layers, Palette, Globe,
+  Settings, Boxes,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -18,7 +19,7 @@ const NAV_ITEMS = [
     items: [
       { label: 'Dashboard',        href: '/dashboard',         icon: LayoutDashboard },
       { label: 'Create Reel',      href: '/create-reel',       icon: Video           },
-      { label: 'Movie Studio',     href: '/movie-studio',      icon: Film            },
+      { label: 'Movie Studio',     href: '/movie-studio/render-center', icon: Film   },
       {
   label: 'Cartoon Studio',
   href: '/cartoon-studio',
@@ -32,6 +33,7 @@ const NAV_ITEMS = [
       { label: 'Cinema Studio',    href: '/cinema-studio',     icon: Palette         },
       { label: 'Marketing Studio', href: '/marketing-studio',  icon: Globe           },
       { label: 'Canvas',           href: '/canvas',            icon: Layers          },
+      { label: 'Asset Manager',    href: '/asset-manager',     icon: Boxes           },
     ],
   },
   {
@@ -48,6 +50,7 @@ const NAV_ITEMS = [
     items: [
       { label: 'Projects', href: '/projects', icon: Film       },
       { label: 'Billing',  href: '/billing',  icon: CreditCard },
+      { label: 'Settings', href: '/settings', icon: Settings   },
     ],
   },
 ]

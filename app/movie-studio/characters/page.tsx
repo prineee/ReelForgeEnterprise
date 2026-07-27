@@ -1,4 +1,5 @@
 import { UsersRound } from "lucide-react";
+import { BackToDashboardLink } from "@/components/movie-studio/BackToDashboardLink";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { CharacterGridCard } from "@/components/character-card/CharacterGridCard";
 import { listCharacterSummaries } from "@/services/infrastructure/CharacterStudioFactory";
@@ -26,6 +27,7 @@ export default function CharacterStudioDashboardPage() {
   return (
     <div className="min-h-screen bg-surface px-4 py-8 text-white sm:px-8">
       <div className="mx-auto max-w-7xl space-y-6">
+        <BackToDashboardLink />
         <div>
           <h1 className="text-2xl font-bold text-white">Character Studio</h1>
           <p className="mt-1 text-sm text-zinc-400">

@@ -1,4 +1,5 @@
 import { Clapperboard } from "lucide-react";
+import { BackToDashboardLink } from "@/components/movie-studio/BackToDashboardLink";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SceneBrowserGrid } from "@/components/scene-browser/SceneBrowserGrid";
 import { listSceneSummaries } from "@/services/infrastructure/SceneStudioFactory";
@@ -19,6 +20,7 @@ export default function SceneBrowserPage() {
   return (
     <div className="min-h-screen bg-surface px-4 py-8 text-white sm:px-8">
       <div className="mx-auto max-w-7xl space-y-6">
+        <BackToDashboardLink />
         <div>
           <h1 className="text-2xl font-bold text-white">Scene Studio</h1>
           <p className="mt-1 text-sm text-zinc-400">

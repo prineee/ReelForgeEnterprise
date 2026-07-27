@@ -1,4 +1,5 @@
 import { Boxes } from "lucide-react";
+import { BackToDashboardLink } from "@/components/movie-studio/BackToDashboardLink";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { RenderCenterJobCard } from "@/components/render-dashboard/RenderCenterJobCard";
 import { QueuePauseToggle } from "@/components/render-dashboard/QueuePauseToggle";
@@ -55,6 +56,7 @@ export default async function RenderCenterPage({ searchParams }: { searchParams:
   return (
     <div className="min-h-screen bg-surface px-4 py-8 text-white sm:px-8">
       <div className="mx-auto max-w-7xl space-y-6">
+        <BackToDashboardLink />
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold text-white">Render Center</h1>

@@ -14,7 +14,11 @@ export function WorkspaceTopBar({ movieTitle, statusLabel, statusVariant, direct
   return (
     <div className="flex h-14 items-center justify-between px-4">
       <div className="flex min-w-0 items-center gap-3">
-        <Link href="/movie-studio/dashboard" className="flex items-center gap-1.5 text-sm text-zinc-400 hover:text-white">
+        <Link
+          href="/movie-studio/render-center"
+          aria-label="Back to Render Center"
+          className="flex items-center gap-1.5 text-sm text-zinc-400 hover:text-white"
+        >
           <ArrowLeft className="h-4 w-4" />
         </Link>
         <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-brand-500 to-purple-500">

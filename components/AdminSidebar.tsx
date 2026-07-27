@@ -18,13 +18,6 @@ export default function AdminSidebar() {
         </Link>
 
         <Link
-          href="/admin/users"
-          className="block text-gray-300 hover:text-white"
-        >
-          Users
-        </Link>
-
-        <Link
           href="/admin/affiliate-payouts"
           className="block text-gray-300 hover:text-white"
         >
