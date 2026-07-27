@@ -28,6 +28,7 @@ import { buildMovieProductionPlan } from "./MovieProducerFactory";
 import { DIRECTOR_PROFILE_PRESETS } from "../ai/director-engine/AIDirectorEngine";
 import { createDefaultProviderRegistry } from "../rendering/ProviderRegistry";
 import { GPUManager } from "../rendering/gpu/GPUManager";
+import { CancellationPolicy } from "../rendering/jobs/CancellationPolicy";
 import type { RenderJob, RenderJobStatus } from "../rendering/types/RenderJob";
 import type { RenderJobProgress } from "../rendering/types/RenderJobProgress";
 import type { ProviderId } from "../rendering/interfaces/RenderProvider";
@@ -97,6 +98,10 @@ export interface JobDetail {
   /** This job's own retriedFromJobId, when this job IS a retry attempt of an earlier one. */
   retryOfJobId?: string;
   characterLinks: { characterId: EntityId; name: string }[];
+  /** CancellationPolicy.isCancellable(job.status) — reused, not reimplemented. */
+  isCancellable: boolean;
+  /** CancellationPolicy.supportsRealCancellation(job.providerId) — false for LTX/GOOGLE (cancel only stops local tracking, not in-flight provider work); true only for LOCAL_GPU today. */
+  supportsRealCancellation: boolean;
 }
 
 export function getJobDetail(jobId: string): JobDetail | undefined {
@@ -104,6 +109,7 @@ export function getJobDetail(jobId: string): JobDetail | undefined {
   const job = manager.getJob(jobId);
   if (!job) return undefined;
 
+  const cancellationPolicy = new CancellationPolicy();
   const allJobs = manager.list();
   const wasAutoRetried = allJobs.some((other) => other.retriedFromJobId === jobId);
 
@@ -129,6 +135,8 @@ export function getJobDetail(jobId: string): JobDetail | undefined {
     wasAutoRetried,
     retryOfJobId: job.retriedFromJobId,
     characterLinks,
+    isCancellable: cancellationPolicy.isCancellable(job.status),
+    supportsRealCancellation: job.providerId ? cancellationPolicy.supportsRealCancellation(job.providerId) : false,
   };
 }
 

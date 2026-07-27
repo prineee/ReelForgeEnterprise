@@ -1,7 +1,9 @@
 import { Boxes } from "lucide-react";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { RenderCenterJobCard } from "@/components/render-dashboard/RenderCenterJobCard";
+import { QueuePauseToggle } from "@/components/render-dashboard/QueuePauseToggle";
 import { JobDetailsPanel } from "@/components/job-details/JobDetailsPanel";
+import { JobActions } from "@/components/job-details/JobActions";
 import { listRenderJobSummaries, getJobDetail, type RenderJobSummary } from "@/services/infrastructure/RenderCenterFactory";
 import type { RenderJobStatus } from "@/services/rendering/types/RenderJob";
 
@@ -35,9 +37,12 @@ export default async function RenderCenterPage({ searchParams }: { searchParams:
   return (
     <div className="min-h-screen bg-surface px-4 py-8 text-white sm:px-8">
       <div className="mx-auto max-w-7xl space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-white">Render Center</h1>
-          <p className="mt-1 text-sm text-zinc-400">Monitor, queue, and inspect every render job across every production.</p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-bold text-white">Render Center</h1>
+            <p className="mt-1 text-sm text-zinc-400">Monitor, queue, and inspect every render job across every production.</p>
+          </div>
+          <QueuePauseToggle />
         </div>
 
         {jobs.length === 0 ? (
@@ -71,8 +76,9 @@ export default async function RenderCenterPage({ searchParams }: { searchParams:
             </div>
 
             {selectedJobDetail && (
-              <div className="w-full shrink-0 xl:w-80">
+              <div className="w-full shrink-0 space-y-3 xl:w-80">
                 <JobDetailsPanel detail={selectedJobDetail} />
+                <JobActions detail={selectedJobDetail} />
               </div>
             )}
           </div>
