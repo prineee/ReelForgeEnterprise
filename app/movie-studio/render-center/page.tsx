@@ -1,7 +1,8 @@
 import { Boxes } from "lucide-react";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { RenderCenterJobCard } from "@/components/render-dashboard/RenderCenterJobCard";
-import { listRenderJobSummaries, type RenderJobSummary } from "@/services/infrastructure/RenderCenterFactory";
+import { JobDetailsPanel } from "@/components/job-details/JobDetailsPanel";
+import { listRenderJobSummaries, getJobDetail, type RenderJobSummary } from "@/services/infrastructure/RenderCenterFactory";
 import type { RenderJobStatus } from "@/services/rendering/types/RenderJob";
 
 /** Reads live server-side in-memory state (the shared RenderJobManager singleton) on every request — must not be statically prerendered. */
@@ -29,6 +30,7 @@ const COLUMNS: { title: string; statuses: readonly RenderJobStatus[] }[] = [
 export default async function RenderCenterPage({ searchParams }: { searchParams: Promise<{ job?: string }> }) {
   const { job: selectedJobId } = await searchParams;
   const jobs = listRenderJobSummaries();
+  const selectedJobDetail = selectedJobId ? getJobDetail(selectedJobId) : undefined;
 
   return (
     <div className="min-h-screen bg-surface px-4 py-8 text-white sm:px-8">
@@ -45,26 +47,34 @@ export default async function RenderCenterPage({ searchParams }: { searchParams:
             description="Submit a render from a movie's Storyboard or Scene Studio to see it here."
           />
         ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
-            {COLUMNS.map((column) => {
-              const columnJobs = jobs.filter((job) => column.statuses.includes(job.status));
-              return (
-                <div key={column.title} className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
-                    {column.title} ({columnJobs.length})
-                  </p>
-                  <div className="space-y-2">
-                    {columnJobs.length === 0 ? (
-                      <p className="text-xs text-zinc-600">None</p>
-                    ) : (
-                      columnJobs.map((job: RenderJobSummary) => (
-                        <RenderCenterJobCard key={job.jobId} job={job} selected={job.jobId === selectedJobId} />
-                      ))
-                    )}
+          <div className="flex flex-col gap-6 xl:flex-row xl:items-start">
+            <div className="grid min-w-0 flex-1 grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+              {COLUMNS.map((column) => {
+                const columnJobs = jobs.filter((job) => column.statuses.includes(job.status));
+                return (
+                  <div key={column.title} className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+                      {column.title} ({columnJobs.length})
+                    </p>
+                    <div className="space-y-2">
+                      {columnJobs.length === 0 ? (
+                        <p className="text-xs text-zinc-600">None</p>
+                      ) : (
+                        columnJobs.map((job: RenderJobSummary) => (
+                          <RenderCenterJobCard key={job.jobId} job={job} selected={job.jobId === selectedJobId} />
+                        ))
+                      )}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
+
+            {selectedJobDetail && (
+              <div className="w-full shrink-0 xl:w-80">
+                <JobDetailsPanel detail={selectedJobDetail} />
+              </div>
+            )}
           </div>
         )}
       </div>
