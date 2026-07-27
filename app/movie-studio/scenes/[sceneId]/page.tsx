@@ -1,18 +1,20 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Camera, Clapperboard, Info, MapPin, Sun, Users } from "lucide-react";
+import { ArrowLeft, Camera, Clapperboard, Info, MapPin, Sun, Users, Boxes } from "lucide-react";
 import { SceneStudioTabs } from "@/components/scene-studio/SceneStudioTabs";
 import { SceneOverviewPanel } from "@/components/scene-detail/SceneOverviewPanel";
 import { CameraInspectorPanel } from "@/components/camera-inspector/CameraInspectorPanel";
 import { LightingInspectorPanel } from "@/components/lighting-inspector/LightingInspectorPanel";
 import { CharacterPlacementPanel } from "@/components/scene-detail/CharacterPlacementPanel";
 import { LocationInspectorPanel } from "@/components/location-inspector/LocationInspectorPanel";
+import { AssetInspectorPanel } from "@/components/asset-inspector/AssetInspectorPanel";
 import {
   getSceneOverview,
   getCameraInspector,
   getLightingInspector,
   getCharacterPlacement,
   getLocationInspector,
+  getAssetInspector,
 } from "@/services/infrastructure/SceneStudioFactory";
 
 /** Reads live server-side in-memory state per request — must not be statically prerendered. */
@@ -33,6 +35,14 @@ export default async function SceneDetailPage({ params }: { params: Promise<{ sc
   const lighting = getLightingInspector(sceneId) ?? { environment: undefined, mood: undefined };
   const placement = getCharacterPlacement(sceneId) ?? { characters: [], dialogue: undefined };
   const location = getLocationInspector(sceneId) ?? { environment: undefined, relatedScenes: [], isReusedFromPriorMovie: false };
+  const assets = getAssetInspector(sceneId) ?? {
+    characterReferenceImages: [],
+    environmentReferenceImages: [],
+    videoUrl: undefined,
+    musicCue: undefined,
+    voiceAssignments: [],
+    soundEffects: [],
+  };
 
   return (
     <div className="min-h-screen bg-surface px-4 py-8 text-white sm:px-8">
@@ -85,6 +95,12 @@ export default async function SceneDetailPage({ params }: { params: Promise<{ sc
               label: "Location",
               icon: <MapPin className="h-3.5 w-3.5" />,
               content: <LocationInspectorPanel location={location} movieId={overview.movieId} />,
+            },
+            {
+              id: "assets",
+              label: "Assets",
+              icon: <Boxes className="h-3.5 w-3.5" />,
+              content: <AssetInspectorPanel assets={assets} />,
             },
           ]}
         />
