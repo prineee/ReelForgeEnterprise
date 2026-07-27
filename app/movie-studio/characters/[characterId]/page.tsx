@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Film, GanttChartSquare, ImageIcon, Info, Mic2, ShieldAlert, UserCircle2 } from "lucide-react";
+import { ArrowLeft, Film, GanttChartSquare, ImageIcon, Info, Mic2, Share2, ShieldAlert, UserCircle2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { CharacterStudioTabs } from "@/components/character-studio/CharacterStudioTabs";
 import { CharacterDetailPanel } from "@/components/character-detail/CharacterDetailPanel";
@@ -9,12 +9,14 @@ import { CharacterContinuityViewer } from "@/components/character-detail/Charact
 import { VisualAppearancePanel } from "@/components/character-detail/VisualAppearancePanel";
 import { VoicePreviewPanel } from "@/components/character-detail/VoicePreviewPanel";
 import { CharacterTimeline } from "@/components/character-timeline/CharacterTimeline";
+import { RelationshipViewer } from "@/components/character-relationships/RelationshipViewer";
 import {
   resolveCharacterProfile,
   getCharacterMovieUsage,
   getCharacterContinuity,
   getCharacterVoiceProfile,
   getCharacterTimeline,
+  getCharacterRelationships,
 } from "@/services/infrastructure/CharacterStudioFactory";
 
 const ROLE_LABEL: Record<string, string> = { LEAD: "Lead", SUPPORTING: "Supporting", MINOR: "Minor" };
@@ -33,6 +35,7 @@ export default async function CharacterDetailPage({ params }: { params: Promise<
   const continuity = getCharacterContinuity(characterId);
   const voiceProfile = getCharacterVoiceProfile(characterId);
   const timeline = getCharacterTimeline(characterId);
+  const relationships = getCharacterRelationships(characterId);
 
   return (
     <div className="min-h-screen bg-surface px-4 py-8 text-white sm:px-8">
@@ -99,6 +102,12 @@ export default async function CharacterDetailPage({ params }: { params: Promise<
               label: "Timeline",
               icon: <GanttChartSquare className="h-3.5 w-3.5" />,
               content: <CharacterTimeline timeline={timeline} />,
+            },
+            {
+              id: "relationships",
+              label: "Relationships",
+              icon: <Share2 className="h-3.5 w-3.5" />,
+              content: <RelationshipViewer relationships={relationships} />,
             },
           ]}
         />
