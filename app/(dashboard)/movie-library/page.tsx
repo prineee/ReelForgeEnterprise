@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { Library } from 'lucide-react'
-import { MOCK_MOVIES, computeLibraryMetrics } from './mockData'
+import { computeLibraryMetrics } from './mockData'
 import { fetchWorkflowList, adaptWorkflowToLibraryMovie } from './adapter'
 import type { FilterOption, LibraryMovie, SortOption } from './types'
 
@@ -62,25 +62,14 @@ export default function MovieLibraryPage() {
   const [sort, setSort] = useState<SortOption>('newest')
   const [selectedMovie, setSelectedMovie] = useState<LibraryMovie | null>(null)
 
-  // Placeholder demo data — see mockData.ts. Brief simulated load so the
-  // skeleton state is real, not skipped.
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setMovies(MOCK_MOVIES)
-      setLoading(false)
-    }, 600)
-    return () => clearTimeout(timer)
-  }, [])
-
   // Task 7: "Workflow completion automatically creates a Movie entry" and
   // "Status updates automatically" — every real workflow WorkflowEngine
-  // knows about (see /api/workflow/list) is merged ahead of the
-  // placeholder catalog, re-synced on an interval so a workflow that's
-  // still running shows its status change without a page reload. Local
-  // actions (archive/duplicate/delete) on a *real* entry only last until
-  // the next sync overwrites it from the live workflow — there's no
-  // backend to persist that override to (no database, per this sprint's
-  // rules), which is an accepted limitation, not a bug.
+  // knows about (see /api/workflow/list) is loaded here and re-synced on
+  // an interval so a workflow that's still running shows its status
+  // change without a page reload. Local actions (archive/duplicate/delete)
+  // only last until the next sync overwrites them — there's no backend to
+  // persist that override to (no database, per this sprint's rules),
+  // which is an accepted limitation, not a bug.
   useEffect(() => {
     let cancelled = false
     let timer: ReturnType<typeof setInterval> | null = null
@@ -94,7 +83,9 @@ export default function MovieLibraryPage() {
         const realIds = new Set(real.map((m) => m.productionId))
         setMovies((prev) => [...real, ...prev.filter((m) => !realIds.has(m.productionId))])
       } catch {
-        // Best-effort live sync — the placeholder catalog still renders if this fails (e.g. logged out, factory not configured).
+        // Best-effort live sync — the grid just stays empty if this fails (e.g. logged out, factory not configured).
+      } finally {
+        if (!cancelled) setLoading(false)
       }
     }
 

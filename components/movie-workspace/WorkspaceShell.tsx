@@ -63,7 +63,7 @@ export function WorkspaceShell({ topBar, leftSidebar, centerPanel, rightSidebar,
         <aside className="hidden w-80 shrink-0 border-l border-white/10 bg-surface-card/60 xl:block">{rightSidebar}</aside>
       </div>
 
-      <div className={cn("shrink-0 border-t border-white/10 bg-surface-card/80 transition-all", bottomCollapsed ? "h-10" : "h-72")}>
+      <div className={cn("shrink-0 border-t border-white/10 bg-surface-card/80 transition-all", bottomCollapsed ? "h-10" : "h-48 lg:h-72")}>
         <button
           type="button"
           onClick={() => setBottomCollapsed((v) => !v)}

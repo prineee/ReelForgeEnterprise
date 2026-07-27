@@ -6,8 +6,7 @@
  * via services/infrastructure/MovieProductionFactory.ts's shared
  * WorkflowEngine) onto LibraryMovie. No database, no separate "movie"
  * store: a workflow *is* the movie entry here, live. page.tsx fetches
- * this list and merges it ahead of the placeholder MOCK_MOVIES — real
- * workflows are never hidden behind demo data.
+ * this list directly — there is no placeholder/demo catalog anymore.
  *
  * Title, story summary, and character list are now read from the real
  * Story Package artifact MovieProductionService's Story Planning stage

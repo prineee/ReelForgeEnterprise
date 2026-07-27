@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { AlertTriangle, Clapperboard } from 'lucide-react'
 import { fetchWorkflowStatus, adaptWorkflowStatusResponse } from './adapter'
-import { MOCK_PRODUCTIONS, computeMetrics } from './mockData'
+import { computeMetrics } from './mockData'
 import type { DashboardProduction } from './types'
+import { EmptyState } from '@/components/ui/EmptyState'
 import { FadeIn } from './components/FadeIn'
 import { MetricsGrid } from './components/MetricsGrid'
 import { ProductionQueueTable } from './components/ProductionQueueTable'
@@ -12,27 +13,14 @@ import { ProductionTimeline } from './components/ProductionTimeline'
 import { CurrentStageCard } from './components/CurrentStageCard'
 import { RecentProductionsGrid } from './components/RecentProductionsGrid'
 import { ActivityFeed } from './components/ActivityFeed'
-import { DashboardSkeleton } from './components/DashboardSkeleton'
 
 const LIVE_POLL_INTERVAL_MS = 2000
 const TERMINAL_STATUSES = ['COMPLETED', 'FAILED', 'CANCELLED']
 
 export default function MovieProductionDashboardPage() {
-  const [loading, setLoading] = useState(true)
   const [productions, setProductions] = useState<DashboardProduction[]>([])
   const [selectedProductionId, setSelectedProductionId] = useState<string | null>(null)
   const [liveError, setLiveError] = useState('')
-
-  // Placeholder demo data — see mockData.ts. Brief simulated load so the
-  // skeleton state is real, not skipped.
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setProductions(MOCK_PRODUCTIONS)
-      setSelectedProductionId(MOCK_PRODUCTIONS.find((p) => p.status === 'IN_PROGRESS')?.productionId ?? MOCK_PRODUCTIONS[0]?.productionId ?? null)
-      setLoading(false)
-    }, 600)
-    return () => clearTimeout(timer)
-  }, [])
 
   // Real integration: if a ?productionId= is present (e.g. carried over from
   // Movie Studio), poll GET /api/workflow/status/[workflowId] every 2s via
@@ -119,8 +107,12 @@ export default function MovieProductionDashboardPage() {
         </div>
       )}
 
-      {loading ? (
-        <DashboardSkeleton />
+      {productions.length === 0 ? (
+        <EmptyState
+          icon={<Clapperboard className="w-7 h-7" />}
+          title="Not enough render history yet"
+          description="Start a movie from Movie Studio and it will appear here live while it's generating."
+        />
       ) : (
         <>
           {/* Top Metrics */}
