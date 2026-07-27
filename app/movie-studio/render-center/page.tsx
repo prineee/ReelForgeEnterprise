@@ -7,11 +7,13 @@ import { JobActions } from "@/components/job-details/JobActions";
 import { RenderTimelinePipeline } from "@/components/render-timeline/RenderTimelinePipeline";
 import { ProviderMonitorGrid } from "@/components/provider-monitor/ProviderMonitorGrid";
 import { ProductionOverviewPanel } from "@/components/render-dashboard/ProductionOverviewPanel";
+import { QualityPanel } from "@/components/render-dashboard/QualityPanel";
 import {
   listRenderJobSummaries,
   getJobDetail,
   getProviderMonitor,
   getProductionOverview,
+  listQualityPanels,
   type RenderJobSummary,
 } from "@/services/infrastructure/RenderCenterFactory";
 import type { RenderJobStatus } from "@/services/rendering/types/RenderJob";
@@ -44,6 +46,7 @@ export default async function RenderCenterPage({ searchParams }: { searchParams:
   const selectedJobDetail = selectedJobId ? getJobDetail(selectedJobId) : undefined;
   const providers = getProviderMonitor();
   const productionOverview = getProductionOverview();
+  const qualityPanels = listQualityPanels();
 
   return (
     <div className="min-h-screen bg-surface px-4 py-8 text-white sm:px-8">
@@ -57,6 +60,8 @@ export default async function RenderCenterPage({ searchParams }: { searchParams:
         </div>
 
         <ProductionOverviewPanel overview={productionOverview} />
+
+        <QualityPanel panels={qualityPanels} />
 
         {jobs.length === 0 ? (
           <EmptyState
