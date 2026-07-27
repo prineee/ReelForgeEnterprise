@@ -1,16 +1,18 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Camera, Clapperboard, Info, Sun, Users } from "lucide-react";
+import { ArrowLeft, Camera, Clapperboard, Info, MapPin, Sun, Users } from "lucide-react";
 import { SceneStudioTabs } from "@/components/scene-studio/SceneStudioTabs";
 import { SceneOverviewPanel } from "@/components/scene-detail/SceneOverviewPanel";
 import { CameraInspectorPanel } from "@/components/camera-inspector/CameraInspectorPanel";
 import { LightingInspectorPanel } from "@/components/lighting-inspector/LightingInspectorPanel";
 import { CharacterPlacementPanel } from "@/components/scene-detail/CharacterPlacementPanel";
+import { LocationInspectorPanel } from "@/components/location-inspector/LocationInspectorPanel";
 import {
   getSceneOverview,
   getCameraInspector,
   getLightingInspector,
   getCharacterPlacement,
+  getLocationInspector,
 } from "@/services/infrastructure/SceneStudioFactory";
 
 /** Reads live server-side in-memory state per request — must not be statically prerendered. */
@@ -30,6 +32,7 @@ export default async function SceneDetailPage({ params }: { params: Promise<{ sc
   const camera = getCameraInspector(sceneId) ?? { cameraPlan: undefined, shotPresetName: undefined, cinematicStyleModifiers: [] };
   const lighting = getLightingInspector(sceneId) ?? { environment: undefined, mood: undefined };
   const placement = getCharacterPlacement(sceneId) ?? { characters: [], dialogue: undefined };
+  const location = getLocationInspector(sceneId) ?? { environment: undefined, relatedScenes: [], isReusedFromPriorMovie: false };
 
   return (
     <div className="min-h-screen bg-surface px-4 py-8 text-white sm:px-8">
@@ -76,6 +79,12 @@ export default async function SceneDetailPage({ params }: { params: Promise<{ sc
               label: "Characters",
               icon: <Users className="h-3.5 w-3.5" />,
               content: <CharacterPlacementPanel placement={placement} />,
+            },
+            {
+              id: "location",
+              label: "Location",
+              icon: <MapPin className="h-3.5 w-3.5" />,
+              content: <LocationInspectorPanel location={location} movieId={overview.movieId} />,
             },
           ]}
         />
