@@ -29,6 +29,11 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  console.log('[voices] Returning', ORPHEUS_VOICES.length, 'Orpheus v1 voices')
-  return NextResponse.json({ voices: ORPHEUS_VOICES })
+  try {
+    console.log('[voices] Returning', ORPHEUS_VOICES.length, 'Orpheus v1 voices')
+    return NextResponse.json({ voices: ORPHEUS_VOICES })
+  } catch (error) {
+    console.error('[reel/voices] GET failed', error)
+    return NextResponse.json({ error: 'Failed to load voices.' }, { status: 500 })
+  }
 }

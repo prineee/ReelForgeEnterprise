@@ -26,42 +26,47 @@ export async function GET(req: Request) {
     );
   }
 
-  const { data } =
-    await (supabase
-      .from("movies") as any)
-      .select("*")
-      .eq("id", movieId)
-      .single();
+  try {
+    const { data } =
+      await (supabase
+        .from("movies") as any)
+        .select("*")
+        .eq("id", movieId)
+        .single();
 
-  if (!data) {
-    return NextResponse.json(
-      {
-        error:
-          "Movie not found",
-      },
-      {
-        status: 404,
-      }
-    );
+    if (!data) {
+      return NextResponse.json(
+        {
+          error:
+            "Movie not found",
+        },
+        {
+          status: 404,
+        }
+      );
+    }
+
+    return NextResponse.json({
+
+      status:
+        data.status ?? "waiting",
+
+      progress:
+        data.progress ?? 0,
+
+      currentScene:
+        data.current_scene ?? 0,
+
+      totalScenes:
+        data.total_scenes ?? 0,
+
+      downloadUrl:
+        data.video_url ?? null,
+
+    });
+  } catch (error) {
+    console.error("[movie/status] GET failed", error);
+    return NextResponse.json({ error: "Failed to fetch movie status." }, { status: 500 });
   }
-
-  return NextResponse.json({
-
-    status:
-      data.status ?? "waiting",
-
-    progress:
-      data.progress ?? 0,
-
-    currentScene:
-      data.current_scene ?? 0,
-
-    totalScenes:
-      data.total_scenes ?? 0,
-
-    downloadUrl:
-      data.video_url ?? null,
-
-  });
 
 }

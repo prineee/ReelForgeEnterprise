@@ -25,22 +25,27 @@ export async function POST(_req: Request, { params }: { params: Promise<{ jobId:
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const manager = getSharedRenderJobManager();
-  const original = manager.getJob(jobId);
-  if (!original) {
-    return NextResponse.json({ error: `No render job "${jobId}".` }, { status: 404 });
-  }
-  if (original.status !== "FAILED") {
-    return NextResponse.json({ error: `Job "${jobId}" is not FAILED — only failed jobs can be manually retried.` }, { status: 409 });
-  }
+  try {
+    const manager = getSharedRenderJobManager();
+    const original = manager.getJob(jobId);
+    if (!original) {
+      return NextResponse.json({ error: `No render job "${jobId}".` }, { status: 404 });
+    }
+    if (original.status !== "FAILED") {
+      return NextResponse.json({ error: `Job "${jobId}" is not FAILED — only failed jobs can be manually retried.` }, { status: 409 });
+    }
 
-  const job = manager.submit({
-    request: original.request,
-    userId: original.userId ?? user.id,
-    projectId: original.projectId,
-    sceneId: original.sceneId,
-    assetId: original.assetId,
-  });
+    const job = manager.submit({
+      request: original.request,
+      userId: original.userId ?? user.id,
+      projectId: original.projectId,
+      sceneId: original.sceneId,
+      assetId: original.assetId,
+    });
 
-  return NextResponse.json({ success: true, job });
+    return NextResponse.json({ success: true, job });
+  } catch (error) {
+    console.error("[render-center/jobs/retry] POST failed", error);
+    return NextResponse.json({ error: "Failed to retry render job." }, { status: 500 });
+  }
 }

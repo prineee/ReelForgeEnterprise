@@ -10,27 +10,32 @@ export async function GET(req: Request) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const workerUrl = process.env.NEXT_PUBLIC_WORKER_URL
-  if (!workerUrl) return NextResponse.json({ error: 'NEXT_PUBLIC_WORKER_URL not configured' }, { status: 500 })
+  try {
+    const workerUrl = process.env.NEXT_PUBLIC_WORKER_URL
+    if (!workerUrl) return NextResponse.json({ error: 'NEXT_PUBLIC_WORKER_URL not configured' }, { status: 500 })
 
-  const res = await fetch(`${workerUrl}/api/lipsync/status/${encodeURIComponent(videoId)}`)
-  if (res.status === 404) {
-    return NextResponse.json({ code: 100, data: { status: 'processing', pct: 0 } })
+    const res = await fetch(`${workerUrl}/api/lipsync/status/${encodeURIComponent(videoId)}`)
+    if (res.status === 404) {
+      return NextResponse.json({ code: 100, data: { status: 'processing', pct: 0 } })
+    }
+
+    const job = await res.json() as {
+      status: string; video_url?: string; error?: string; pct?: number
+    }
+
+    console.log('[heygen/status] video_id:', videoId, 'status:', job.status)
+
+    return NextResponse.json({
+      code: 100,
+      data: {
+        status:    job.status,
+        video_url: job.video_url ?? null,
+        error:     job.error    ?? null,
+        pct:       job.pct      ?? 0,
+      },
+    })
+  } catch (error) {
+    console.error('[heygen/status] GET failed', error)
+    return NextResponse.json({ error: 'Failed to fetch video status.' }, { status: 500 })
   }
-
-  const job = await res.json() as {
-    status: string; video_url?: string; error?: string; pct?: number
-  }
-
-  console.log('[heygen/status] video_id:', videoId, 'status:', job.status)
-
-  return NextResponse.json({
-    code: 100,
-    data: {
-      status:    job.status,
-      video_url: job.video_url ?? null,
-      error:     job.error    ?? null,
-      pct:       job.pct      ?? 0,
-    },
-  })
 }

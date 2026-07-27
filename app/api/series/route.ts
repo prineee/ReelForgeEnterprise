@@ -7,12 +7,17 @@ export async function DELETE(_: Request, { params }: { params: Promise<{ id: str
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (supabase.from('series') as any)
-    .delete()
-    .eq('id', id)
-    .eq('user_id', user.id)
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (supabase.from('series') as any)
+      .delete()
+      .eq('id', id)
+      .eq('user_id', user.id)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ success: true })
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error('[series] DELETE failed', error)
+    return NextResponse.json({ error: 'Failed to delete series.' }, { status: 500 })
+  }
 }

@@ -20,23 +20,28 @@ export async function GET(_req: Request, { params }: { params: Promise<{ movieId
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const manager = getSharedRenderJobManager();
-  const jobs = manager.list().filter((job) => job.projectId === movieId);
+  try {
+    const manager = getSharedRenderJobManager();
+    const jobs = manager.list().filter((job) => job.projectId === movieId);
 
-  return NextResponse.json({
-    success: true,
-    movieId,
-    jobs: jobs.map((job) => ({
-      jobId: job.jobId,
-      sceneId: job.sceneId,
-      status: job.status,
-      providerId: job.providerId,
-      retryCount: job.retryCount,
-      createdAt: job.createdAt,
-      updatedAt: job.updatedAt,
-      videoUrl: job.result?.videoUrl,
-      error: job.error,
-      progress: manager.getProgress(job.jobId),
-    })),
-  });
+    return NextResponse.json({
+      success: true,
+      movieId,
+      jobs: jobs.map((job) => ({
+        jobId: job.jobId,
+        sceneId: job.sceneId,
+        status: job.status,
+        providerId: job.providerId,
+        retryCount: job.retryCount,
+        createdAt: job.createdAt,
+        updatedAt: job.updatedAt,
+        videoUrl: job.result?.videoUrl,
+        error: job.error,
+        progress: manager.getProgress(job.jobId),
+      })),
+    });
+  } catch (error) {
+    console.error("[movie-studio/render-jobs] GET failed", error);
+    return NextResponse.json({ error: "Failed to load render jobs." }, { status: 500 });
+  }
 }
