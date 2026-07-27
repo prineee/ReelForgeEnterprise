@@ -40,6 +40,7 @@ export function StoryboardGrid({
   renderingSceneIds,
 }: StoryboardGridProps) {
   const [order, setOrder] = useState<string[]>(() => [...scenes].sort((a, b) => a.sceneNumber - b.sceneNumber).map((s) => s.id));
+  const [draggedId, setDraggedId] = useState<string | null>(null);
 
   if (scenes.length === 0) {
     return (
@@ -57,15 +58,18 @@ export function StoryboardGrid({
   const cameraPlanById = new Map(cameraPlans.map((c) => [c.id, c]));
   const emotionPlanById = new Map(emotionPlans.map((e) => [e.id, e]));
 
-  function move(sceneId: string, direction: -1 | 1) {
+  function handleDrop(targetSceneId: string) {
     setOrder((current) => {
-      const index = current.indexOf(sceneId);
-      const target = index + direction;
-      if (target < 0 || target >= current.length) return current;
+      if (!draggedId || draggedId === targetSceneId) return current;
+      const from = current.indexOf(draggedId);
+      const to = current.indexOf(targetSceneId);
+      if (from === -1 || to === -1) return current;
       const next = [...current];
-      [next[index], next[target]] = [next[target], next[index]];
+      next.splice(from, 1);
+      next.splice(to, 0, draggedId);
       return next;
     });
+    setDraggedId(null);
   }
 
   return (
@@ -78,23 +82,28 @@ export function StoryboardGrid({
         const emotionPlan = emotionPlanById.get(scene.emotionPlanId);
 
         return (
-          <SceneCard
+          <div
             key={sceneId}
-            scene={scene}
-            cameraPlan={cameraPlan}
-            emotionPlan={emotionPlan}
-            transitionName={cameraPlan ? transitionNameFor(cameraPlan.transitionToNext) : undefined}
-            characterNames={scene.characterIds.map((id) => characterById.get(id)?.name ?? id)}
-            locationName={environment?.name ?? scene.environmentId}
-            status={statusFor(scene.id)}
-            videoUrl={videoUrlFor(scene.id)}
-            canMoveUp={index > 0}
-            canMoveDown={index < order.length - 1}
-            onMoveUp={() => move(sceneId, -1)}
-            onMoveDown={() => move(sceneId, 1)}
-            onRender={onRenderScene ? () => onRenderScene(scene.id) : undefined}
-            rendering={renderingSceneIds?.has(scene.id)}
-          />
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={() => handleDrop(sceneId)}
+          >
+            <SceneCard
+              scene={scene}
+              cameraPlan={cameraPlan}
+              emotionPlan={emotionPlan}
+              transitionName={cameraPlan ? transitionNameFor(cameraPlan.transitionToNext) : undefined}
+              characterNames={scene.characterIds.map((id) => characterById.get(id)?.name ?? id)}
+              locationName={environment?.name ?? scene.environmentId}
+              status={statusFor(scene.id)}
+              videoUrl={videoUrlFor(scene.id)}
+              position={index + 1}
+              isDragging={draggedId === sceneId}
+              onDragHandleStart={() => setDraggedId(sceneId)}
+              onDragEnd={() => setDraggedId(null)}
+              onRender={onRenderScene ? () => onRenderScene(scene.id) : undefined}
+              rendering={renderingSceneIds?.has(scene.id)}
+            />
+          </div>
         );
       })}
     </div>

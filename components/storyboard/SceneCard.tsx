@@ -1,14 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type DragEvent } from "react";
 import Link from "next/link";
 import {
   Camera,
   Clapperboard,
   ChevronDown,
   ChevronUp,
-  ArrowUp,
-  ArrowDown,
+  GripVertical,
   Users,
   MapPin,
   Smile,
@@ -16,6 +15,7 @@ import {
   Play,
   Loader2,
   Compass,
+  ListOrdered,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -32,10 +32,11 @@ export interface SceneCardProps {
   locationName: string;
   status: SceneStatus;
   videoUrl?: string;
-  canMoveUp?: boolean;
-  canMoveDown?: boolean;
-  onMoveUp?: () => void;
-  onMoveDown?: () => void;
+  /** Current display position (1-based) in the storyboard — distinct from the persisted scene.sceneNumber, see note below. */
+  position: number;
+  isDragging?: boolean;
+  onDragHandleStart?: (event: DragEvent<HTMLDivElement>) => void;
+  onDragEnd?: () => void;
   onRender?: () => void;
   rendering?: boolean;
 }
@@ -44,11 +45,11 @@ export interface SceneCardProps {
  * Every field this card shows comes from the real MovieBlueprint
  * (services/ai/director/OutputSchema.ts) already produced by the existing
  * director pipeline, plus (for `status`/`videoUrl`) a real RenderJob when
- * one exists (services/rendering/jobs/RenderJobManager.ts). Reordering is
- * a client-side display convenience only (see WORKSPACE'S
- * "Storyboard Reorder" note) — Scene.sceneNumber is never mutated, so
- * this never claims to persist anything the backend doesn't actually
- * store.
+ * one exists (services/rendering/jobs/RenderJobManager.ts). Drag-and-drop
+ * reordering is a client-side display convenience only — Scene.sceneNumber
+ * is never mutated, so this never claims to persist anything the backend
+ * doesn't actually store; `position` reflects the current on-screen order
+ * only.
  */
 export function SceneCard({
   scene,
@@ -59,17 +60,17 @@ export function SceneCard({
   locationName,
   status,
   videoUrl,
-  canMoveUp,
-  canMoveDown,
-  onMoveUp,
-  onMoveDown,
+  position,
+  isDragging,
+  onDragHandleStart,
+  onDragEnd,
   onRender,
   rendering,
 }: SceneCardProps) {
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <Card className="flex h-full flex-col overflow-hidden">
+    <Card className={cn("flex h-full flex-col overflow-hidden transition-opacity", isDragging && "opacity-40")}>
       {/* Thumbnail placeholder — no real per-scene thumbnail exists anywhere in the backend; a completed render's real video is linked below instead of faking a poster image. */}
       <div className="relative flex aspect-video w-full shrink-0 flex-col items-center justify-center border-b border-white/10 bg-gradient-to-br from-brand-900/60 to-purple-950/60">
         <Clapperboard className="h-7 w-7 text-white/30" />
@@ -78,25 +79,15 @@ export function SceneCard({
         <div className="absolute left-2 top-2">
           <SceneStatusBadge status={status} />
         </div>
-        <div className="absolute right-2 top-2 flex items-center gap-1">
-          <button
-            type="button"
-            onClick={onMoveUp}
-            disabled={!canMoveUp}
-            className="rounded-lg border border-white/10 bg-black/30 p-1 text-zinc-300 hover:bg-black/50 disabled:opacity-30"
-            aria-label="Move scene up"
-          >
-            <ArrowUp className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={onMoveDown}
-            disabled={!canMoveDown}
-            className="rounded-lg border border-white/10 bg-black/30 p-1 text-zinc-300 hover:bg-black/50 disabled:opacity-30"
-            aria-label="Move scene down"
-          >
-            <ArrowDown className="h-3.5 w-3.5" />
-          </button>
+        <div
+          draggable
+          onDragStart={onDragHandleStart}
+          onDragEnd={onDragEnd}
+          className="absolute right-2 top-2 cursor-grab rounded-lg border border-white/10 bg-black/30 p-1 text-zinc-300 hover:bg-black/50 active:cursor-grabbing"
+          aria-label="Drag to reorder"
+          title="Drag to reorder"
+        >
+          <GripVertical className="h-3.5 w-3.5" />
         </div>
 
         {videoUrl && (
@@ -126,6 +117,9 @@ export function SceneCard({
         </div>
 
         <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs text-zinc-400">
+          <span className="inline-flex items-center gap-1.5 truncate" title="Current storyboard position (display order only)">
+            <ListOrdered className="h-3.5 w-3.5 shrink-0" /> Position {position}
+          </span>
           <span className="inline-flex items-center gap-1.5 truncate">
             <Clapperboard className="h-3.5 w-3.5 shrink-0" /> {scene.durationSeconds ?? cameraPlan?.durationSeconds ?? 8}s
           </span>
