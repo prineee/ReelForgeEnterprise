@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { Scene, Character, Environment, CameraPlan, EmotionPlan } from "@/services/ai/director/OutputSchema";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Clapperboard } from "lucide-react";
@@ -46,6 +46,12 @@ export function StoryboardGrid({
   const [order, setOrder] = useState<string[]>(() => [...scenes].sort((a, b) => a.sceneNumber - b.sceneNumber).map((s) => s.id));
   const [draggedId, setDraggedId] = useState<string | null>(null);
 
+  const sceneById = useMemo(() => new Map(scenes.map((s) => [s.id, s])), [scenes]);
+  const characterById = useMemo(() => new Map(characters.map((c) => [c.id, c])), [characters]);
+  const environmentById = useMemo(() => new Map(environments.map((e) => [e.id, e])), [environments]);
+  const cameraPlanById = useMemo(() => new Map(cameraPlans.map((c) => [c.id, c])), [cameraPlans]);
+  const emotionPlanById = useMemo(() => new Map(emotionPlans.map((e) => [e.id, e])), [emotionPlans]);
+
   if (scenes.length === 0) {
     return (
       <EmptyState
@@ -55,12 +61,6 @@ export function StoryboardGrid({
       />
     );
   }
-
-  const sceneById = new Map(scenes.map((s) => [s.id, s]));
-  const characterById = new Map(characters.map((c) => [c.id, c]));
-  const environmentById = new Map(environments.map((e) => [e.id, e]));
-  const cameraPlanById = new Map(cameraPlans.map((c) => [c.id, c]));
-  const emotionPlanById = new Map(emotionPlans.map((e) => [e.id, e]));
 
   function handleDrop(targetSceneId: string) {
     setOrder((current) => {

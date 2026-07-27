@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import EarningsChart from "@/components/affiliate/EarningsChart";
+import dynamic from "next/dynamic";
+
+const EarningsChart = dynamic(() => import("@/components/affiliate/EarningsChart"), { ssr: false });
 
 export default function AnalyticsPage() {
   const [stats, setStats] =

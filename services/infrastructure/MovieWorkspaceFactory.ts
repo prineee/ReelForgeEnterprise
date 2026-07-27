@@ -110,6 +110,20 @@ function reconstructStoryBlueprint(movie: MovieBlueprint): StoryBlueprint {
   };
 }
 
+type DirectorPlanResult = { plan: AIDirectorPlan; story: StoryBlueprint; referencePromptPlan: ReferencePromptPlan };
+
+/**
+ * Per-context, per-profile cache for buildDirectorPlan() — several callers
+ * across CharacterStudioFactory/SceneStudioFactory/MovieProducerFactory
+ * were independently rebuilding the identical plan (same context, same
+ * profile) multiple times in a single request. Keyed by the ProductionContext
+ * object itself (a WeakMap, so it never needs manual invalidation/cleanup):
+ * ProductionContextRepository.save() always stores a new context object, so
+ * a stale context is simply never in the map — this can never serve a plan
+ * built from an outdated movieBlueprint.
+ */
+const directorPlanCache = new WeakMap<ProductionContext, Map<string, DirectorPlanResult>>();
+
 /**
  * Runs the real, untouched AIDirectorEngine.plan() (services/ai/director-engine/)
  * against a completed production's real MovieBlueprint — the first live
@@ -120,8 +134,12 @@ function reconstructStoryBlueprint(movie: MovieBlueprint): StoryBlueprint {
 export function buildDirectorPlan(
   context: ProductionContext,
   profile: DirectorProfile = DIRECTOR_PROFILE_PRESETS.CINEMATIC_DRAMA
-): { plan: AIDirectorPlan; story: StoryBlueprint; referencePromptPlan: ReferencePromptPlan } | undefined {
+): DirectorPlanResult | undefined {
   if (!context.movieBlueprint) return undefined;
+
+  const cacheForContext = directorPlanCache.get(context);
+  const cached = cacheForContext?.get(profile.id);
+  if (cached) return cached;
 
   const story = reconstructStoryBlueprint(context.movieBlueprint);
   const referencePromptPlan = buildReferencePromptPlan(context.movieBlueprint.movie.id, context.uploadedReferenceAssets);
@@ -129,5 +147,10 @@ export function buildDirectorPlan(
   const engine = new AIDirectorEngine();
   const plan = engine.plan(story, context.movieBlueprint, referencePromptPlan, profile);
 
-  return { plan, story, referencePromptPlan };
+  const result: DirectorPlanResult = { plan, story, referencePromptPlan };
+  const map = cacheForContext ?? new Map<string, DirectorPlanResult>();
+  map.set(profile.id, result);
+  directorPlanCache.set(context, map);
+
+  return result;
 }

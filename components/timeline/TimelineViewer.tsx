@@ -49,6 +49,7 @@ export function TimelineViewer({ timeline, storyPlan, musicPlan, scenes, cameraP
 
   const sceneById = useMemo(() => new Map(scenes.map((s) => [s.id, s])), [scenes]);
   const cameraPlanById = useMemo(() => new Map(cameraPlans.map((c) => [c.id, c])), [cameraPlans]);
+  const entryBySceneId = useMemo(() => new Map(timeline.entries.map((e) => [e.sceneId, e])), [timeline.entries]);
 
   if (timeline.entries.length === 0) {
     return (
@@ -149,7 +150,7 @@ export function TimelineViewer({ timeline, storyPlan, musicPlan, scenes, cameraP
 
           <TimelineTrack label="Music" icon={<Music2 className="h-3.5 w-3.5" />} widthPixels={widthPixels}>
             {musicPlan.cues.map((cue) => {
-              const entry = timeline.entries.find((e) => e.sceneId === cue.sceneId);
+              const entry = entryBySceneId.get(cue.sceneId);
               if (!entry) return null;
               return (
                 <TimelineBlock

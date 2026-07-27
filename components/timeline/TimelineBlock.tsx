@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { cn } from "@/lib/utils";
 
 export interface TimelineBlockProps {
@@ -20,7 +21,7 @@ const COLOR_CLASSES: Record<TimelineBlockProps["color"], string> = {
 };
 
 /** Pure presentational block — position/width derived entirely from real timing data passed in, never estimated here. */
-export function TimelineBlock({ startSeconds, durationSeconds, pixelsPerSecond, label, color, title, highlighted, innerRef }: TimelineBlockProps) {
+function TimelineBlockImpl({ startSeconds, durationSeconds, pixelsPerSecond, label, color, title, highlighted, innerRef }: TimelineBlockProps) {
   return (
     <div
       ref={innerRef}
@@ -39,5 +40,7 @@ export function TimelineBlock({ startSeconds, durationSeconds, pixelsPerSecond, 
     </div>
   );
 }
+
+export const TimelineBlock = memo(TimelineBlockImpl);
 
 export default TimelineBlock;
