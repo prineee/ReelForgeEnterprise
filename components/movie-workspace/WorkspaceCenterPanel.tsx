@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { LayoutGrid, GanttChartSquare, List } from "lucide-react";
 import type { Scene, Character, Environment, CameraPlan, EmotionPlan } from "@/services/ai/director/OutputSchema";
 import type { MovieTimelinePlan } from "@/services/ai/director-engine/MovieTimelineBuilder";
@@ -8,8 +8,22 @@ import type { StoryPlan } from "@/services/ai/director-engine/StoryPlanner";
 import type { MusicPlan } from "@/services/ai/asset-intelligence/MusicPlanner";
 import { StoryboardGrid } from "@/components/storyboard/StoryboardGrid";
 import { SceneStatusBadge, type SceneStatus } from "@/components/storyboard/SceneStatusBadge";
+import { StoryboardFilters, EMPTY_STORYBOARD_FILTERS, ALL, type StoryboardFilterState } from "@/components/storyboard/StoryboardFilters";
 import { TimelineViewer } from "@/components/timeline/TimelineViewer";
 import { WorkspaceTabs } from "./WorkspaceTabs";
+
+const ALL_SCENE_STATUSES: SceneStatus[] = [
+  "DRAFTED",
+  "QUEUED",
+  "WAITING",
+  "ASSIGNED",
+  "RENDERING",
+  "DOWNLOADING",
+  "VERIFYING",
+  "COMPLETED",
+  "FAILED",
+  "CANCELLED",
+];
 
 export interface RenderJobLookup {
   sceneId?: string;
@@ -53,6 +67,7 @@ export function WorkspaceCenterPanel({
 }: WorkspaceCenterPanelProps) {
   const [jobs, setJobs] = useState<readonly RenderJobLookup[]>(initialJobs);
   const [renderingSceneIds, setRenderingSceneIds] = useState<Set<string>>(new Set());
+  const [filters, setFilters] = useState<StoryboardFilterState>(EMPTY_STORYBOARD_FILTERS);
 
   function statusFor(sceneId: string): SceneStatus {
     return jobs.find((job) => job.sceneId === sceneId)?.status ?? "DRAFTED";
@@ -60,6 +75,23 @@ export function WorkspaceCenterPanel({
   function videoUrlFor(sceneId: string): string | undefined {
     return jobs.find((job) => job.sceneId === sceneId)?.videoUrl;
   }
+
+  const cameraPlanById = useMemo(() => new Map(cameraPlans.map((c) => [c.id, c])), [cameraPlans]);
+
+  const filteredScenes = useMemo(
+    () =>
+      scenes.filter((scene) => {
+        if (filters.characterId !== ALL && !scene.characterIds.includes(filters.characterId)) return false;
+        if (filters.environmentId !== ALL && scene.environmentId !== filters.environmentId) return false;
+        if (filters.status !== ALL && statusFor(scene.id) !== filters.status) return false;
+        const cameraPlan = cameraPlanById.get(scene.cameraPlanId);
+        if (filters.shot !== ALL && cameraPlan?.shot !== filters.shot) return false;
+        if (filters.movement !== ALL && cameraPlan?.movement !== filters.movement) return false;
+        return true;
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [scenes, filters, cameraPlanById, jobs]
+  );
 
   async function handleRenderScene(sceneId: string) {
     setRenderingSceneIds((prev) => new Set(prev).add(sceneId));
@@ -90,18 +122,27 @@ export function WorkspaceCenterPanel({
           label: "Storyboard",
           icon: <LayoutGrid className="h-3.5 w-3.5" />,
           content: (
-            <StoryboardGrid
-              scenes={scenes}
-              characters={characters}
-              environments={environments}
-              cameraPlans={cameraPlans}
-              emotionPlans={emotionPlans}
-              transitionNameFor={transitionNameFor}
-              statusFor={statusFor}
-              videoUrlFor={videoUrlFor}
-              onRenderScene={handleRenderScene}
-              renderingSceneIds={renderingSceneIds}
-            />
+            <>
+              <StoryboardFilters
+                characters={characters}
+                environments={environments}
+                statuses={ALL_SCENE_STATUSES}
+                value={filters}
+                onChange={setFilters}
+              />
+              <StoryboardGrid
+                scenes={filteredScenes}
+                characters={characters}
+                environments={environments}
+                cameraPlans={cameraPlans}
+                emotionPlans={emotionPlans}
+                transitionNameFor={transitionNameFor}
+                statusFor={statusFor}
+                videoUrlFor={videoUrlFor}
+                onRenderScene={handleRenderScene}
+                renderingSceneIds={renderingSceneIds}
+              />
+            </>
           ),
         },
         {
