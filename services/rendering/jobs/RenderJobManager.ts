@@ -38,8 +38,9 @@ import { WorkerPool } from "./WorkerPool";
 import { RetryPolicy } from "./RetryPolicy";
 import { CancellationPolicy } from "./CancellationPolicy";
 import type { NotificationChannel, RenderJobNotificationEvent } from "./notifications/NotificationChannel";
-import { RenderLedger } from "../ledger/RenderLedger";
+import { RenderLedger, type RenderLedgerEntry } from "../ledger/RenderLedger";
 import { ProviderHealthMonitor } from "../health/ProviderHealthMonitor";
+import type { ProviderStatistics } from "../types/ProviderStatistics";
 
 export interface SubmitRenderJobOptions {
   request: RenderRequest;
@@ -126,6 +127,24 @@ export class RenderJobManager {
       history,
       updatedAt: job.updatedAt,
     };
+  }
+
+  /**
+   * Read-only access to every render attempt recordOutcome() has logged
+   * so far (success and failure both call it — see recordOutcome() below).
+   * Added for Render Center's history-dependent views (jobs per day,
+   * provider usage, average render time, failure rate) — previously this
+   * ledger was populated on every real job but unreachable from outside
+   * this class. No new tracking is introduced; this only exposes data
+   * already being recorded.
+   */
+  getLedger(): readonly RenderLedgerEntry[] {
+    return this.ledger.getAll();
+  }
+
+  /** Read-only access to per-provider health statistics (success/failure/retry rate, average render time) computed from the same recordOutcome() observations as getLedger(). */
+  getHealthStatistics(): readonly ProviderStatistics[] {
+    return this.healthMonitor.getAllStatistics();
   }
 
   /**
