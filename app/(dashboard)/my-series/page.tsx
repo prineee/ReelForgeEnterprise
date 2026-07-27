@@ -9,6 +9,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { cn, formatDate } from '@/lib/utils'
+import { useEscapeKey } from '@/hooks/useEscapeKey'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -66,6 +67,8 @@ function NewSeriesModal({ onClose, onCreate }: {
   const [loading, setLoading]         = useState(false)
   const [error, setError]             = useState('')
 
+  useEscapeKey(onClose)
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!title.trim()) return
@@ -87,12 +90,12 @@ function NewSeriesModal({ onClose, onCreate }: {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="new-series-modal-title">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
       <div className="relative z-10 w-full max-w-md bg-surface-card border border-surface-border rounded-2xl shadow-2xl">
         <div className="flex items-center justify-between px-6 py-5 border-b border-surface-border">
-          <h2 className="font-bold text-base">New Series</h2>
-          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-white hover:bg-surface-hover transition-colors">
+          <h2 id="new-series-modal-title" className="font-bold text-base">New Series</h2>
+          <button onClick={onClose} aria-label="Close" className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-white hover:bg-surface-hover transition-colors">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -155,6 +158,8 @@ function AddEpisodeModal({ seriesId, onClose, onAdd }: {
   const [adding, setAdding]     = useState(false)
   const [error, setError]       = useState('')
 
+  useEscapeKey(onClose)
+
   useEffect(() => {
     async function load() {
       try {
@@ -196,12 +201,12 @@ function AddEpisodeModal({ seriesId, onClose, onAdd }: {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="add-episode-modal-title">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
       <div className="relative z-10 w-full max-w-lg bg-surface-card border border-surface-border rounded-2xl shadow-2xl max-h-[80vh] flex flex-col">
         <div className="flex items-center justify-between px-6 py-5 border-b border-surface-border shrink-0">
-          <h2 className="font-bold text-base">Add Episode from Projects</h2>
-          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-white hover:bg-surface-hover transition-colors">
+          <h2 id="add-episode-modal-title" className="font-bold text-base">Add Episode from Projects</h2>
+          <button onClick={onClose} aria-label="Close" className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-white hover:bg-surface-hover transition-colors">
             <X className="w-4 h-4" />
           </button>
         </div>

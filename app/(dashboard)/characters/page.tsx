@@ -8,6 +8,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { cn, formatDate } from '@/lib/utils'
+import { useEscapeKey } from '@/hooks/useEscapeKey'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -78,6 +79,8 @@ function CharacterPanel({
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState('')
 
+  useEscapeKey(onClose)
+
   function set(k: keyof CharacterFormData, v: string) {
     setForm(prev => ({ ...prev, [k]: v }))
   }
@@ -97,12 +100,12 @@ function CharacterPanel({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex">
+    <div className="fixed inset-0 z-50 flex" role="dialog" aria-modal="true" aria-labelledby="character-panel-title">
       <div className="flex-1 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <div className="w-full max-w-md bg-surface-card border-l border-surface-border flex flex-col h-full shadow-2xl">
         <div className="flex items-center justify-between px-6 py-5 border-b border-surface-border shrink-0">
-          <h2 className="font-bold text-base">{initial.id ? 'Edit Character' : 'New Character'}</h2>
-          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-white hover:bg-surface-hover transition-colors">
+          <h2 id="character-panel-title" className="font-bold text-base">{initial.id ? 'Edit Character' : 'New Character'}</h2>
+          <button onClick={onClose} aria-label="Close" className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-white hover:bg-surface-hover transition-colors">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -221,10 +224,10 @@ function CharacterCard({ character, voiceName, onEdit, onDelete }: {
             </div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            <button onClick={onEdit} className="w-7 h-7 flex items-center justify-center rounded text-gray-500 hover:text-brand-400 hover:bg-brand-950/40 transition-colors" title="Edit">
+            <button onClick={onEdit} aria-label={`Edit ${character.name}`} title="Edit" className="w-7 h-7 flex items-center justify-center rounded text-gray-500 hover:text-brand-400 hover:bg-brand-950/40 transition-colors">
               <Edit2 className="w-3.5 h-3.5" />
             </button>
-            <button onClick={onDelete} className="w-7 h-7 flex items-center justify-center rounded text-gray-500 hover:text-red-400 hover:bg-red-950/40 transition-colors" title="Delete">
+            <button onClick={onDelete} aria-label={`Delete ${character.name}`} title="Delete" className="w-7 h-7 flex items-center justify-center rounded text-gray-500 hover:text-red-400 hover:bg-red-950/40 transition-colors">
               <Trash2 className="w-3.5 h-3.5" />
             </button>
           </div>

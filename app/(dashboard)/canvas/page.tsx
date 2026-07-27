@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { cn, formatDate } from '@/lib/utils'
+import { useEscapeKey } from '@/hooks/useEscapeKey'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -60,6 +61,8 @@ function AddClipModal({ onClose, onAdd }: {
   const [customUrl, setCustomUrl] = useState('')
   const [customTitle, setCustomTitle] = useState('')
 
+  useEscapeKey(onClose)
+
   useEffect(() => {
     fetch('/api/projects').then(r => r.json()).then(j => {
       setProjects((j.projects ?? []).filter((p: Project) => p.video_url))
@@ -91,12 +94,12 @@ function AddClipModal({ onClose, onAdd }: {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="add-clip-modal-title">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
       <div className="relative z-10 w-full max-w-lg bg-surface-card border border-surface-border rounded-2xl shadow-2xl max-h-[75vh] flex flex-col">
         <div className="flex items-center justify-between px-5 py-4 border-b border-surface-border shrink-0">
-          <h3 className="font-bold text-sm">Add Clip</h3>
-          <button onClick={onClose} className="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:text-white"><X className="w-4 h-4" /></button>
+          <h3 id="add-clip-modal-title" className="font-bold text-sm">Add Clip</h3>
+          <button onClick={onClose} aria-label="Close" className="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:text-white"><X className="w-4 h-4" /></button>
         </div>
         <div className="flex gap-1 p-3 border-b border-surface-border shrink-0">
           {(['projects', 'url'] as const).map(t => (
@@ -338,6 +341,7 @@ export default function CanvasPage() {
                     <p className="text-xs text-gray-500">{b.clips.length} clip{b.clips.length !== 1 ? 's' : ''} · {formatDate(b.created_at)}</p>
                   </div>
                   <button onClick={e => { e.stopPropagation(); deleteBoard(b.id) }}
+                    aria-label={`Delete board ${b.title}`}
                     className="w-7 h-7 flex items-center justify-center rounded text-gray-600 hover:text-red-400 hover:bg-red-950/40 transition-colors shrink-0">
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
