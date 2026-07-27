@@ -21,19 +21,41 @@ import type {
 } from "@/services/ai/providers/google/VeoService";
 
 const LTX_API_BASE_URL = process.env.LTX_API_BASE_URL ?? "https://api.ltx.video/v2";
-const LTX_MODEL = process.env.LTX_MODEL ?? "ltx-2-fast";
+const LTX_MODEL = process.env.LTX_MODEL ?? "ltx-2-3-fast";
 
 const DEFAULT_DURATION_SECONDS = 8;
-const DEFAULT_RESOLUTION = "1080p";
+// Official LTX resolution format is "<width>x<height>", not "720p"/"1080p".
+const DEFAULT_RESOLUTION = "1920x1080";
 
-/** Shape of a job resource as returned by both the submit and status/poll endpoints. */
+/**
+ * fps is required at 1920x1080: ltx-2-3-fast accepts the API's own default
+ * (24), but the legacy ltx-2-fast model (kept for LTX_MODEL=ltx-2-fast
+ * backwards compatibility) only accepts 25 at this resolution — 24/16/30
+ * are all rejected. Verified directly against the live API, since LTX's
+ * docs are not reachable from this environment.
+ */
+const LEGACY_FAST_MODEL_FPS = 25;
+const DEFAULT_FPS = 24;
+
+function resolveFps(model: string): number {
+  return model === "ltx-2-fast" ? LEGACY_FAST_MODEL_FPS : DEFAULT_FPS;
+}
+
+/**
+ * Shape of a job resource as returned by both the submit and status/poll
+ * endpoints. A completed job nests its output under `result` (verified
+ * directly against the live API: `{ status: "completed", result: {
+ * video_url } }`) — there is no top-level `video_url`.
+ */
 interface LTXJobResponse {
   task_id?: string;
   id?: string;
   status?: string;
-  video_url?: string;
-  duration?: number;
-  resolution?: string;
+  result?: {
+    video_url?: string;
+    duration?: number;
+    resolution?: string;
+  };
   error?: string | { message?: string };
 }
 
@@ -65,13 +87,15 @@ export class LTXVideoClient implements VeoClient {
   }
 
   async generate(request: VeoRequest): Promise<VeoResponse> {
+    const resolution = request.quality ?? DEFAULT_RESOLUTION;
     const body = {
       model: LTX_MODEL,
       prompt: request.prompt,
       negative_prompt: request.negativePrompt,
       aspect_ratio: request.aspectRatio,
       duration: request.durationSeconds ?? DEFAULT_DURATION_SECONDS,
-      resolution: request.quality ?? DEFAULT_RESOLUTION,
+      resolution,
+      fps: resolveFps(LTX_MODEL),
     };
 
     const job = await this.call<LTXJobResponse>("/text-to-video", {
@@ -95,16 +119,16 @@ export class LTXVideoClient implements VeoClient {
       method: "GET",
     });
 
-    if (this.mapStatus(job.status) !== "COMPLETED" || !job.video_url) {
+    if (this.mapStatus(job.status) !== "COMPLETED" || !job.result?.video_url) {
       throw new LTXVideoClientError(
         `LTX job "${operationId}" is not ready for download (status: ${job.status ?? "unknown"}).`
       );
     }
 
     return {
-      url: job.video_url,
-      durationSeconds: job.duration,
-      resolution: job.resolution,
+      url: job.result.video_url,
+      durationSeconds: job.result.duration,
+      resolution: job.result.resolution,
     };
   }
 
@@ -124,6 +148,10 @@ export class LTXVideoClient implements VeoClient {
 
   private mapStatus(status: string | undefined): VeoGenerationStatus {
     switch ((status ?? "").toLowerCase()) {
+      // The submit endpoint's response (id + created_at only) carries no
+      // status field at all — verified directly against the live API —
+      // which means "just accepted, not started yet" rather than unknown.
+      case "":
       case "queued":
       case "pending":
         return "PENDING";

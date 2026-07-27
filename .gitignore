@@ -53,3 +53,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Local GPU provider output (services/gpu/backends/SyntheticTestPatternBackend.ts)
+/public/renders/

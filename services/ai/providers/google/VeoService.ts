@@ -145,7 +145,8 @@ export class VeoService {
     this.validateResponse(response);
 
     if (response.status === "COMPLETED") {
-      return this.downloadAndValidate(response.operationId);
+      return this.downloadAndValidate(response
+        .operationId);
     }
 
     throw new VeoServiceError(

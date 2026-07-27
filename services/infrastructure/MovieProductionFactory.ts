@@ -95,6 +95,11 @@ import type {
 
 import { ProviderFactory } from "../ai/providers/ProviderFactory";
 import { isDeveloperMode } from "../ai/devmode/isDeveloperMode";
+import { MockRenderProvider } from "../ai/devmode/MockRenderProvider";
+
+import { RenderOrchestrator } from "../rendering/RenderOrchestrator";
+import { ProviderRegistry, createDefaultProviderRegistry } from "../rendering/ProviderRegistry";
+import { RenderDecisionEngine } from "../rendering/decision/RenderDecisionEngine";
 
 import { MovieProductionService } from "../ai/orchestration/MovieProductionService";
 import { InMemoryProductionContextRepository } from "./ProductionContextRepository";
@@ -127,6 +132,31 @@ type VideoProvider = "GOOGLE" | "LTX";
 
 function resolveVideoProvider(): VideoProvider {
   return process.env.VIDEO_PROVIDER?.toUpperCase() === "LTX" ? "LTX" : "GOOGLE";
+}
+
+/**
+ * Builds the ProviderRegistry RenderOrchestrator uses for real Stage 4
+ * video generation. Outside Developer Mode this is exactly
+ * createDefaultProviderRegistry() (services/rendering/ProviderRegistry.ts)
+ * — LTX/GOOGLE resolve to the real LTXCloudProvider/GoogleVeoProvider
+ * adapters, selected per request by ProviderSelector reading
+ * VIDEO_PROVIDER, same as veoService above. In Developer Mode both slots
+ * are overridden to MockRenderProvider — the same fake data
+ * ProviderFactory.createVeo() already substitutes for veoService via
+ * MockVeoService — so AI_MODE=development never makes a real network
+ * call through either path. LOCAL_GPU is deliberately left real in every
+ * mode: it costs nothing and calls no external API (see
+ * services/gpu/backends/SyntheticTestPatternBackend.ts) — the same
+ * "don't fake what's already free and local" reasoning doesn't apply to
+ * LTX/GOOGLE, which are real paid third-party calls.
+ */
+function createRenderProviderRegistry(): ProviderRegistry {
+  const registry = createDefaultProviderRegistry();
+  if (isDeveloperMode()) {
+    registry.register("LTX", () => new MockRenderProvider());
+    registry.register("GOOGLE", () => new MockRenderProvider());
+  }
+  return registry;
 }
 
 /**
@@ -259,7 +289,7 @@ class GoogleGenAIImagenClient implements ImagenClient {
  * used in services/ai/gemini.ts. Feeds VeoService directly (Stage 4 of
  * MovieProductionService).
  */
-class GoogleGenAIVeoClient implements VeoClient {
+export class GoogleGenAIVeoClient implements VeoClient {
   // getVideosOperation() calls operation._fromAPIResponse(...) internally on
   // whatever operation object is passed in, so it requires a real
   // GenerateVideosOperation instance, not a bare { name } object literal —
@@ -585,6 +615,21 @@ export function createMovieProductionService(config?: MovieProductionFactoryConf
   const veoService = ProviderFactory.createVeo(
     () => new VeoService(videoProvider === "LTX" ? new LTXVideoClient() : new GoogleGenAIVeoClient(ai))
   );
+  // Stage 4 (Scene Video Generation) is now driven by renderOrchestrator,
+  // not veoService directly — see MovieProductionService.generateSceneVideo().
+  // veoService above is kept (unused by real generation) per Sprint 2's
+  // "do not remove VeoService" requirement. createRenderProviderRegistry()
+  // swaps LTX/GOOGLE for the same MockRenderProvider Developer Mode already
+  // uses for veoService, so AI_MODE=development never makes a real call
+  // through either path.
+  //
+  // RenderDecisionEngine (Sprint 4) is a real subclass of ProviderSelector
+  // — RenderOrchestrator's `selector` parameter accepts it exactly as it
+  // accepts a plain ProviderSelector, so RenderOrchestrator.ts itself
+  // needed zero changes to gain VIDEO_PROVIDER=LOCAL_GPU routing. Every
+  // other VIDEO_PROVIDER value behaves identically to before (it falls
+  // through to ProviderSelector's own unmodified GOOGLE/LTX logic).
+  const renderOrchestrator = new RenderOrchestrator(createRenderProviderRegistry(), new RenderDecisionEngine());
   const elevenLabsService = ProviderFactory.createElevenLabs(
     () => new ElevenLabsService(new NotConfiguredAudioClient())
   );
@@ -636,7 +681,8 @@ export function createMovieProductionService(config?: MovieProductionFactoryConf
     renderQueue,
     movieAssembler,
     finalMovieRenderer,
-    sharedContextRepository
+    sharedContextRepository,
+    renderOrchestrator
   );
 
   // TEMPORARY DIAGNOSTIC — trace only.

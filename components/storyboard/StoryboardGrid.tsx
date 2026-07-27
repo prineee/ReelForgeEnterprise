@@ -1,0 +1,104 @@
+"use client";
+
+import { useState } from "react";
+import type { Scene, Character, Environment, CameraPlan, EmotionPlan } from "@/services/ai/director/OutputSchema";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Clapperboard } from "lucide-react";
+import { SceneCard } from "./SceneCard";
+import type { SceneStatus } from "./SceneStatusBadge";
+
+export interface StoryboardGridProps {
+  scenes: Scene[];
+  characters: Character[];
+  environments: Environment[];
+  cameraPlans: CameraPlan[];
+  emotionPlans: EmotionPlan[];
+  transitionNameFor: (transition: string) => string;
+  statusFor: (sceneId: string) => SceneStatus;
+  videoUrlFor: (sceneId: string) => string | undefined;
+  onRenderScene?: (sceneId: string) => void;
+  renderingSceneIds?: ReadonlySet<string>;
+}
+
+/**
+ * Reordering here is a client-side display convenience only — it never
+ * calls any API and Scene.sceneNumber (the real, backend-authoritative
+ * order) is never mutated. Everything else rendered is real data resolved
+ * from the MovieBlueprint already produced by the existing director
+ * pipeline (services/ai/director/).
+ */
+export function StoryboardGrid({
+  scenes,
+  characters,
+  environments,
+  cameraPlans,
+  emotionPlans,
+  transitionNameFor,
+  statusFor,
+  videoUrlFor,
+  onRenderScene,
+  renderingSceneIds,
+}: StoryboardGridProps) {
+  const [order, setOrder] = useState<string[]>(() => [...scenes].sort((a, b) => a.sceneNumber - b.sceneNumber).map((s) => s.id));
+
+  if (scenes.length === 0) {
+    return (
+      <EmptyState
+        icon={<Clapperboard className="h-7 w-7" />}
+        title="No scenes yet"
+        description="This movie hasn't reached Scene Planning yet — scenes will appear here once the director pipeline drafts them."
+      />
+    );
+  }
+
+  const sceneById = new Map(scenes.map((s) => [s.id, s]));
+  const characterById = new Map(characters.map((c) => [c.id, c]));
+  const environmentById = new Map(environments.map((e) => [e.id, e]));
+  const cameraPlanById = new Map(cameraPlans.map((c) => [c.id, c]));
+  const emotionPlanById = new Map(emotionPlans.map((e) => [e.id, e]));
+
+  function move(sceneId: string, direction: -1 | 1) {
+    setOrder((current) => {
+      const index = current.indexOf(sceneId);
+      const target = index + direction;
+      if (target < 0 || target >= current.length) return current;
+      const next = [...current];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  }
+
+  return (
+    <div className="space-y-3">
+      {order.map((sceneId, index) => {
+        const scene = sceneById.get(sceneId);
+        if (!scene) return null;
+        const environment = environmentById.get(scene.environmentId);
+        const cameraPlan = cameraPlanById.get(scene.cameraPlanId);
+        const emotionPlan = emotionPlanById.get(scene.emotionPlanId);
+
+        return (
+          <SceneCard
+            key={sceneId}
+            scene={scene}
+            cameraPlan={cameraPlan}
+            emotionPlan={emotionPlan}
+            transitionName={cameraPlan ? transitionNameFor(cameraPlan.transitionToNext) : undefined}
+            characterNames={scene.characterIds.map((id) => characterById.get(id)?.name ?? id)}
+            locationName={environment?.name ?? scene.environmentId}
+            status={statusFor(scene.id)}
+            videoUrl={videoUrlFor(scene.id)}
+            canMoveUp={index > 0}
+            canMoveDown={index < order.length - 1}
+            onMoveUp={() => move(sceneId, -1)}
+            onMoveDown={() => move(sceneId, 1)}
+            onRender={onRenderScene ? () => onRenderScene(scene.id) : undefined}
+            rendering={renderingSceneIds?.has(scene.id)}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+export default StoryboardGrid;

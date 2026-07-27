@@ -71,16 +71,22 @@
  * SceneGenerationRequest[] is cached in
  * ProductionContext.sceneGenerationRequests for later stages.
  *
- * Design note (CTO decision): runVideoGenerationStage() calls the
- * injected VeoService directly, one generateVideo() call per scene — it
- * does not instantiate VeoGenerator, build any adapter, or implement
- * RenderQueue's batching/polling/retry behavior. Consequence: per
- * VeoService's own documented contract, generateVideo() only returns a
- * video when the underlying operation completes synchronously; if a
- * scene's generation is asynchronous, generateVideo() throws instead of
- * polling, and that failure propagates as this stage's failure. Handling
- * asynchronous/queued video generation is explicitly RenderQueue's future
- * responsibility, not this stage's.
+ * Design note (Sprint 2 — Render Orchestrator integration):
+ * runVideoGenerationStage() calls the injected RenderOrchestrator
+ * directly, one renderAndWait() call per scene — it does not instantiate
+ * VeoGenerator, build a provider adapter, or implement RenderQueue's
+ * batching/polling/retry behavior itself. RenderOrchestrator.renderAndWait()
+ * owns the submit -> poll -> download sequence (see RenderOrchestrator.ts);
+ * this stage only translates its RenderRequest/RenderResult, exactly the
+ * way it previously translated VeoRequest/VeoResponse. No provider
+ * (LTX, Google, or any future GPU backend) or provider-specific object is
+ * ever visible past RenderOrchestrator's boundary — this stage only ever
+ * sees RenderResult. VeoService remains constructor-injected and fully
+ * functional but is no longer what drives real generation; it is kept for
+ * backwards compatibility (nothing else in this class currently reads
+ * it). Handling multi-scene batching/queueing beyond one renderAndWait()
+ * per scene is still explicitly RenderQueue's future responsibility, not
+ * this stage's.
  *
  * Design note: runMovieAssemblyStage() calls MovieAssembler.assemble(movie,
  * batch), which needs a BatchGenerationResult (VideoGenerationResult[] with
@@ -132,6 +138,7 @@ import type { VeoService, GeneratedVideo } from "../providers/google/VeoService"
 import type { ElevenLabsService } from "../providers/audio/ElevenLabsService";
 import type { CloudinaryService } from "../providers/storage/CloudinaryService";
 import type { RenderQueue } from "../production/RenderQueue";
+import type { RenderOrchestrator } from "../../rendering/RenderOrchestrator";
 import type { BatchGenerationResult } from "../production/VeoGenerator";
 import type { MovieAssembler, MovieAssemblyResult } from "../production/MovieAssembler";
 import type { FinalMovieRenderer, RenderPlan } from "../production/FinalMovieRenderer";
@@ -205,7 +212,8 @@ export class MovieProductionService {
     private readonly renderQueue: RenderQueue,
     private readonly movieAssembler: MovieAssembler,
     private readonly finalMovieRenderer: FinalMovieRenderer,
-    private readonly contextRepository: ProductionContextRepository
+    private readonly contextRepository: ProductionContextRepository,
+    private readonly renderOrchestrator: RenderOrchestrator
   ) {}
 
   /**
@@ -705,15 +713,36 @@ export class MovieProductionService {
   }
 
   /**
-   * Generates one scene's video via the injected VeoService.
+   * Generates one scene's video via the injected RenderOrchestrator.
+   * renderAndWait() owns the submit -> poll -> download sequence and
+   * returns a terminal RenderResult (COMPLETED with a videoUrl, or
+   * FAILED) — this method's only job is translating that RenderResult
+   * into the GeneratedVideo shape the rest of this stage (and
+   * MovieAssembler downstream) already expects, the same translation
+   * boundary VeoService.generateVideo() previously sat behind.
    */
   private async generateSceneVideo(request: SceneGenerationRequest): Promise<GeneratedVideo> {
-    return this.veoService.generateVideo(request.positivePrompt, {
+    const result = await this.renderOrchestrator.renderAndWait({
+      prompt: request.positivePrompt,
       negativePrompt: request.negativePrompt,
       aspectRatio: request.aspectRatio,
       durationSeconds: request.expectedDuration,
       quality: request.quality,
     });
+
+    if (result.status !== "COMPLETED" || !result.videoUrl) {
+      throw new MovieProductionServiceError(
+        `Video generation failed for scene "${request.sceneId}" via provider "${result.provider}": ` +
+          (result.error ?? `render ended with status ${result.status}`)
+      );
+    }
+
+    return {
+      url: result.videoUrl,
+      thumbnailUrl: result.thumbnail,
+      durationSeconds: result.duration,
+      resolution: result.resolution,
+    };
   }
 
   private buildVideoArtifactMetadata(
