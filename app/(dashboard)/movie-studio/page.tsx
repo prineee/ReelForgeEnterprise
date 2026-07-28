@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Sparkles, Loader2, CheckCircle2, XCircle, Clock } from 'lucide-react'
+import Link from 'next/link'
+import { Sparkles, Loader2, CheckCircle2, XCircle, Clock, ArrowRight } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -239,8 +240,16 @@ export default function MovieStudioPage() {
             )}
 
             {isSuccess && (
-              <div className="flex items-center gap-2 text-sm text-green-400 bg-green-950/30 border border-green-800 rounded-lg px-3 py-2.5">
-                <CheckCircle2 className="w-4 h-4 shrink-0" /> Movie production completed successfully.
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-sm text-green-400 bg-green-950/30 border border-green-800 rounded-lg px-3 py-2.5">
+                  <CheckCircle2 className="w-4 h-4 shrink-0" /> Movie production completed successfully.
+                </div>
+                <Link
+                  href={`/movie-studio/workspace/${productionId}`}
+                  className="inline-flex items-center gap-2 text-sm text-brand-400 hover:text-brand-300 font-medium transition-colors"
+                >
+                  Open in Workspace <ArrowRight className="w-3.5 h-3.5" />
+                </Link>
               </div>
             )}
 

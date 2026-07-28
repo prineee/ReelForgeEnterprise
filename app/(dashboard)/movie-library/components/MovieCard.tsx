@@ -63,7 +63,7 @@ export function MovieCard({
       <div className="flex items-center gap-1 border-t border-white/5 px-2 py-2">
         {canContinue && (
           <Link
-            href={`/movie-production?productionId=${movie.productionId}`}
+            href="/movie-studio/render-center"
             title="Continue Production"
             className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 transition-colors hover:bg-white/5 hover:text-brand-300"
           >

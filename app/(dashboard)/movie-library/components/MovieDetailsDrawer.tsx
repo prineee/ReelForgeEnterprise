@@ -91,7 +91,7 @@ export function MovieDetailsDrawer({ movie, onClose }: { movie: LibraryMovie | n
                   </a>
                   {canContinue && (
                     <Link
-                      href={`/movie-production?productionId=${movie.productionId}`}
+                      href="/movie-studio/render-center"
                       className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-sm font-medium text-gray-200 transition-colors hover:border-brand-600 hover:text-white"
                     >
                       <PlayCircle className="w-4 h-4" /> Continue Production

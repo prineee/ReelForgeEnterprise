@@ -20,7 +20,8 @@ const NAV_ITEMS = [
     items: [
       { label: 'Dashboard',        href: '/dashboard',         icon: LayoutDashboard },
       { label: 'Create Reel',      href: '/create-reel',       icon: Video           },
-      { label: 'Movie Studio',     href: '/movie-studio/render-center', icon: Film   },
+      { label: 'Movie Studio',     href: '/movie-studio',      icon: Film            },
+      { label: 'Movie Library',    href: '/movie-library',     icon: Library         },
       {
   label: 'Cartoon Studio',
   href: '/cartoon-studio',
