@@ -75,13 +75,12 @@ workspace editor needs the full viewport (see the comment in
 (`render-center`, `characters`, `scenes`) instead gets its own minimal
 `BackToDashboardLink` (`components/movie-studio/BackToDashboardLink.tsx`).
 
-**Known constraint**: there is no persisted "list every movie/production" data source
-anywhere in the codebase. `ProductionContextRepository` only supports get/save, not
-enumeration. Character Studio and Scene Studio (`app/movie-studio/characters`,
-`app/movie-studio/scenes`) are scoped to "every movie this server process has seen
-this session," not "every movie that exists" — documented in-line in
-`CharacterStudioFactory.ts` and `SceneStudioFactory.ts`. Fixing this is a backend/data
-model change, out of scope for this pass.
+**Resolved (Sprint 16, Task 3)**: `ProductionContextRepository.list()` plus
+`MovieCatalogService` (`services/infrastructure/MovieCatalogService.ts`) now give
+Character Studio, Scene Studio, Render Center, and Movie Workspace one canonical,
+userId-scoped movie enumeration, replacing the old "every movie this server process
+happened to see" session-scoping. Still in-memory / resets on process restart — that
+constraint is unchanged, just no longer combined with incomplete enumeration.
 
 ## Request flow (typical AI generation)
 
@@ -104,12 +103,24 @@ them) — see `docs/BETA_CHECKLIST.md` for the tradeoff (a root-level boundary l
 dashboard sidebar chrome when it fires inside `(dashboard)`; per-section boundaries
 that preserve chrome are noted as future work).
 
-## Payments / pricing — one open issue
+## Payments / pricing
 
-`lib/plans.ts` is documented as "the single source of truth" for plan pricing/credits
-and is what Stripe, Razorpay, and `UpgradeModal` actually read. **`lib/payment/plans.ts`
-is a second, independently-defined pricing table that only the PayPal capture-order
-route (`app/api/payment/paypal/capture-order/route.ts`) reads**, and its numbers have
-drifted from `lib/plans.ts` (different plan keys, no `vip` tier). This was found but
-not fixed during this pass — it needs a product decision (which numbers are correct)
-before merging, not just a mechanical fix. See `docs/BETA_CHECKLIST.md`.
+**Resolved (Sprint 16, Task 2)**: `lib/plans.ts` is now the single pricing source read
+by every payment path (Stripe, Razorpay, PayPal, `UpgradeModal`, homepage). The second,
+drifted `lib/payment/plans.ts` table is gone.
+
+**Known limitation (Sprint 16, Task 5)**: PayPal has no real server-side Orders API
+integration — `create-order`/`capture-order` used to grant credits immediately with no
+verification against PayPal that a payment had actually happened. That credit-granting
+path is now disabled (both routes return 503) until a real PayPal Orders API
+create+capture flow is built. See `## Security` below.
+
+## Security
+
+See the "Security" section in `docs/BETA_CHECKLIST.md` for the full Sprint 16 Task 5
+audit summary (assumptions, fixes, remaining risks). In short: every `app/api/**`
+route authenticates via `supabase.auth.getUser()`; resource access additionally checks
+ownership (a `user_id`/`userId` field compared against the requesting user, in Postgres
+tables or in-memory `ProductionContext`); admin routes check `users.is_admin` via
+`lib/admin.ts`'s `requireAdmin()`. RLS policies on Supabase tables were **not** audited
+as part of this pass — only application-level checks were.

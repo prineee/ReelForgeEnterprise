@@ -31,9 +31,10 @@ Connect the repo in Vercel and set the environment variables below on the projec
 **Payments**
 - `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`
 - `RAZORPAY_KEY_ID`, `RAZORPAY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`
-- PayPal: read `app/api/payment/paypal/**` for its own required vars, and see
-  `docs/ARCHITECTURE.md`'s note about `lib/payment/plans.ts` drifting from the real
-  pricing source (`lib/plans.ts`) before relying on PayPal pricing in production.
+- PayPal: `NEXT_PUBLIC_PAYPAL_CLIENT_ID` is present, but PayPal checkout is currently
+  **disabled server-side** (Sprint 16, Task 5 — see `## Security` below) since it had
+  no real Orders API verification. Do not re-enable `app/api/payment/paypal/{create,capture}-order`
+  without first implementing that verification.
 
 **App/worker wiring**
 - `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_SITE_URL`
@@ -76,8 +77,24 @@ points).
 - Row Level Security: verify RLS policies exist for every table the app reads/writes
   as an authenticated (non-admin) user — this pass did not audit RLS policies
   themselves, only the application code calling Supabase.
+- **Admin access**: `users.is_admin` (boolean) gates every `app/api/admin/**` route as
+  of Sprint 16, Task 5 (`lib/admin.ts`'s `requireAdmin()`). Before launch, confirm no
+  production user has `is_admin = true` who shouldn't, and that there's an actual
+  process for setting it (this pass found no UI or migration that sets this column —
+  it must currently be set directly in the database).
 - No SQL migration files were found checked into this repo at audit time; confirm the
   production schema is otherwise tracked/reproducible before launch.
+
+## Security
+
+See `docs/BETA_CHECKLIST.md`'s "Security" section for the full Sprint 16 Task 5 audit
+(assumptions, fixes, remaining risks) before going to production. Highlights relevant
+to deployment specifically:
+- `.env.local` / `worker/.env` were found holding real live secrets in plaintext on
+  disk during this audit (not committed to git). Rotate any of those keys before
+  launch if this repo/machine has ever been shared, zipped, or backed up anywhere.
+- PayPal checkout is disabled (see above) — don't advertise it as a working payment
+  option until re-enabled with real verification.
 
 ## Post-deploy smoke test
 

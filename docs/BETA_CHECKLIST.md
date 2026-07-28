@@ -88,13 +88,11 @@ a false positive caught by rebuilding — see git history for `services/movie/Mo
 These were found but are out of scope for a QA/polish pass (product decisions,
 backend/data-model changes, or large refactors) — flagging for a deliberate follow-up:
 
-- **`lib/payment/plans.ts` vs `lib/plans.ts` pricing drift** — PayPal reads a
-  different, stale pricing table than Stripe/Razorpay/the UI. Needs a product
-  decision on correct numbers before merging a fix, not a mechanical one.
-- **No enumeration of movies/productions** anywhere in the data model — Character
-  Studio, Scene Studio, and the Movie Production/Library pages can only show what
-  this server process has seen since it started. A real "list all productions"
-  backend capability is a data-model change, not a UI fix.
+- ~~`lib/payment/plans.ts` vs `lib/plans.ts` pricing drift~~ — **fixed, Sprint 16 Task 2.**
+  `lib/plans.ts` is now the single pricing source every payment path reads.
+- ~~No enumeration of movies/productions anywhere in the data model~~ — **fixed,
+  Sprint 16 Task 3.** `MovieCatalogService` now gives Character Studio, Scene Studio,
+  Render Center, and Movie Workspace one canonical, userId-scoped enumeration.
 - **Two competing "Movie Studio" experiences remain** — the legacy page is still live
   (unlinked, reachable by URL). Consolidating or removing it is a product call, not
   made here.
@@ -113,9 +111,106 @@ backend/data-model changes, or large refactors) — flagging for a deliberate fo
 - **No `.env.example`** checked in — `docs/DEPLOYMENT.md`'s env var list was compiled
   by grepping `process.env.*` usage; keeping a real example file in sync would prevent
   future drift.
-- **Admin section has no visible role-gating in the UI** — reachable by anyone who
-  knows the URL and is authenticated; not audited for actual server-side authorization
-  in this pass.
+- **Admin section has no visible role-gating in the UI** — `app/api/admin/**` routes
+  now enforce `is_admin` server-side (Sprint 16, Task 5), but the admin *pages*
+  themselves (`app/admin/**`) render their shell before their data fetches fail, so a
+  non-admin visiting the URL briefly sees layout/chrome before every panel errors out.
+  A page-level redirect/guard (mirroring the `if (!user) redirect("/login")` pattern
+  already used throughout `app/movie-studio/**`) is a follow-up, not done this pass.
+
+## Security (Sprint 16, Task 5)
+
+An enterprise security audit pass — no new features, no architecture redesign, focused
+on identifying and fixing genuine security risks across API routes, env vars,
+authorization, debug code, input validation, and error responses.
+
+### Security assumptions
+
+- **Identity**: `supabase.auth.getUser()` is the single source of truth for who's
+  making a request, in every `app/api/**` route. There is no separate API-key/service-
+  token auth surface for first-party routes.
+- **Ownership**: resource access is scoped by an explicit ownership field compared
+  against the requesting user — `user_id`/`userId` columns in Postgres tables, or
+  `ProductionContext.userId` for the in-memory movie/render data (checked directly, or
+  via `MovieCatalogService.listOwnedMovieIds()`).
+- **Admin**: `users.is_admin` is the one admin gate, enforced by `lib/admin.ts`'s
+  `requireAdmin()`, applied to every `app/api/admin/**` route as of this pass.
+- **Payments**: Stripe and Razorpay compute/verify amounts server-side (webhook
+  signature verification against a secret, or an order re-fetched from the provider's
+  own API) — a client can never set its own price. PayPal has no working server-side
+  verification and its credit-granting is disabled until it does.
+- **Secrets**: all API keys/service-role keys are read from `process.env`, never
+  hardcoded in source; `NEXT_PUBLIC_*` is reserved for values safe to ship to the
+  client (verified during this audit — no server secret was found mis-prefixed).
+- **RLS is assumed, not verified**: Supabase Row Level Security policies are assumed to
+  exist as defense-in-depth behind the application-level ownership checks above, but
+  this pass audited application code only, not the database-side policies themselves
+  (same caveat `docs/DEPLOYMENT.md` already carried).
+
+### Fixed this pass
+
+- Removed `services/infrastructure/MovieProductionFactory.ts`'s leftover
+  `__debugRepositoryState()` diagnostic instrumentation, which leaked every in-memory
+  productionId to any caller of `movie/create`, `movie/status/[productionId]`, or
+  `workflow/status/[workflowId]` via a `_trace` field in the response.
+- Fixed `app/api/auth/callback/route.ts` logging the full request cookie jar
+  (including Supabase's own session cookies) on every login; also fixed a
+  `.maybesingle()` typo that silently broke OAuth referral attribution.
+- Added missing authentication to `GET /api/movie/status`, `GET /api/movie/status/[productionId]`,
+  and `GET /api/workflow/status/[workflowId]` — all three previously had **no auth
+  check at all**.
+- Added missing ownership checks to `movie-studio/[movieId]/render`, `render-jobs`,
+  `render-center/jobs/[jobId]/{cancel,retry}`, `movie/generate-scenes`, and
+  `series/[id]/episodes` — authenticated, but not verifying the specific resource
+  belonged to the caller (any user could act on any other user's movie/job/series by id).
+- Fixed a classic SSRF in `/api/proxy-image` (fetched any client-supplied URL
+  server-side, no auth, no allowlist) — now requires auth and only allows the two real
+  image hosts this app generates (`res.cloudinary.com`, `image.pollinations.ai`), with
+  `redirect: 'error'` closing the redirect-to-disallowed-host bypass.
+- Fixed two unauthenticated affiliate endpoints: `GET /api/affiliate/commissions`
+  leaked every affiliate's commission data to anyone; `POST /api/affiliate/save-referral`
+  trusted a client-supplied `userId`, letting anyone fabricate referral/commission
+  records for an arbitrary user.
+- Added real admin authorization (`lib/admin.ts`'s `requireAdmin()`) to all six
+  `app/api/admin/**` routes. Two (`affiliate-payouts` GET, `affiliate-payouts/pay`
+  POST) had **no auth at all** — publicly readable affiliate PII/financials, and
+  anyone could mark any payout "paid." Two more (`admin/stats`,
+  `admin/users/[id]/credits`) only checked session presence, not admin role — the
+  latter meant any logged-in user could potentially grant themselves credits.
+- Disabled PayPal's credit-granting exploit: `create-order`/`capture-order` credited
+  accounts immediately with zero verification against PayPal's API that a payment had
+  happened. Both routes now return 503 until real Orders API verification is built —
+  see `docs/ARCHITECTURE.md`'s Payments section.
+- Removed `app/api/test-tts`, an unauthenticated debug route with zero real callers,
+  abusing an undocumented Google endpoint with spoofed headers.
+- Deleted `exclude/engineering/AI-RULES.md` — dead code, but its content instructed
+  any AI agent reading it to never inspect/analyze the repository, which is a risk to
+  future audits regardless of original intent.
+
+### Remaining security risks (not fixed this pass)
+
+- **PayPal has no real payment integration** — checkout is disabled (see above) until
+  a genuine server-side Orders API create+capture flow is built.
+- **`heygen/status` has no ownership check on `video_id`** — the external lipsync
+  worker owns that job entirely; there's no local table linking a video_id to a user.
+  Closing this properly means adding persistence, out of scope for a hardening-only pass.
+- **No RLS policy audit** — see "Security assumptions" above.
+- **Raw Supabase `error.message` returned to the client in many routes** — low
+  severity (internal DB error text, not secrets), but inconsistent; a blanket
+  generic-error-message policy across all routes is a good follow-up, only partially
+  applied to the files touched in this pass.
+- **`.env.local` / `worker/.env` hold real live secrets in plaintext on disk** (not
+  committed to git, but recommend rotation hygiene — see `docs/DEPLOYMENT.md`).
+- **`account/delete` has no re-auth/confirmation step** before an irreversible action —
+  a hijacked session can delete the account in one request.
+- **`affiliate/track` has no rate limiting** — an attacker could spam a competitor's
+  referral_code to inflate click counts and crater their conversion rate.
+- **`affiliate/payment-settings` has no input validation** on payout destination
+  fields (PayPal email, bank account, IFSC, etc.) — ownership is correctly scoped, so
+  this isn't a redirect-payout-to-attacker vulnerability, just missing hygiene.
+- **PayPal button UX**: with the backend disabled, `components/payment/PayPalButton.tsx`
+  now surfaces a generic "Payment failed" alert — a UX follow-up, not a security issue.
+- **Admin pages have no UI-level route guard** — see the "Known limitations" entry above.
 
 ## Verification run at the end of this pass
 
