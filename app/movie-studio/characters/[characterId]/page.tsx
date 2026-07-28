@@ -1,5 +1,6 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
+import { createClient } from "@/lib/supabase/server";
 import { ArrowLeft, Film, GanttChartSquare, ImageIcon, Info, Mic2, Share2, ShieldAlert, UserCircle2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { CharacterStudioTabs } from "@/components/character-studio/CharacterStudioTabs";
@@ -29,13 +30,19 @@ const ROLE_LABEL: Record<string, string> = { LEAD: "Lead", SUPPORTING: "Supporti
  */
 export default async function CharacterDetailPage({ params }: { params: Promise<{ characterId: string }> }) {
   const { characterId } = await params;
-  const profile = resolveCharacterProfile(characterId);
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const profile = resolveCharacterProfile(characterId, user.id);
   if (!profile) notFound();
-  const movieUsage = getCharacterMovieUsage(characterId);
-  const continuity = getCharacterContinuity(characterId);
-  const voiceProfile = getCharacterVoiceProfile(characterId);
-  const timeline = getCharacterTimeline(characterId);
-  const relationships = getCharacterRelationships(characterId);
+  const movieUsage = getCharacterMovieUsage(characterId, user.id);
+  const continuity = getCharacterContinuity(characterId, user.id);
+  const voiceProfile = getCharacterVoiceProfile(characterId, user.id);
+  const timeline = getCharacterTimeline(characterId, user.id);
+  const relationships = getCharacterRelationships(characterId, user.id);
 
   return (
     <div className="min-h-screen bg-surface px-4 py-8 text-white sm:px-8">

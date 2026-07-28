@@ -6,37 +6,31 @@
  * read-composition over already-existing, already-public services. No new
  * business logic, no new persistence, no new shared singleton state.
  *
- * The hard constraint this file works within: ProductionContextRepository
- * has no enumeration method (getOrCreate/get/save only, confirmed by
- * inspection) — there is no way to discover "every movie that exists."
- * What IS real and already cross-movie is CharacterLibrary
- * (getSharedAssetManager().getCharacterLibrary()), a shared singleton that
- * accumulates one entry per character every time any movie's workspace
- * page registers it via AssetManager.catalog(). This file treats that
- * accumulated state as the source of truth for "which characters/movies
- * exist" — Character Studio can only ever show characters from movies
- * whose workspace has been visited during this server process's lifetime,
- * same in-memory-now scope every other part of this codebase already
- * documents (ProductionContextRepository's own header, RenderJobManager,
- * etc). This file does not add persistence to fix that — doing so would
- * be a backend redesign, out of scope for this sprint.
+ * "Which movies exist" now comes from MovieCatalogService (Sprint 16,
+ * Task 3) — the one canonical enumeration shared with Scene Studio,
+ * Render Center, and Movie Library, scoped to the requesting userId.
  *
- * For each known character, CharacterLibraryEntry.movieIds (already
- * public) is the bridge back to that character's real, full data:
- * ProductionContextRepository.get(movieId) resolves the real
- * MovieBlueprint, from which the full Character (personality,
- * emotionalBaseline, wardrobe, voiceProfile) is read directly — nothing
- * here re-authors or re-derives that data. "Most recently registered
- * movie" (the last id in movieIds) is used as the canonical source for
- * single-movie-scoped fields, the same convention CharacterLibraryEntry
- * itself already uses for `consistencyEntry` ("the most recently
- * registered consistency profile").
+ * CharacterLibrary (getSharedAssetManager().getCharacterLibrary()) is
+ * still the source for cross-movie character identity/reuse detection
+ * (CharacterMemory's consistency matching, not reimplemented here) — that
+ * part is unchanged, real business logic this file doesn't redesign.
+ * What changed: CharacterLibraryEntry.movieIds is keyed by DirectorEngine's
+ * own title-slug Movie.id (CharacterLibrary.register(movie) reads
+ * movie.movie.id), a different id space from ProductionContextRepository's
+ * key (productionId — the id used everywhere else as "movieId": Workspace/
+ * Render Center URLs, RenderJob.projectId, and now MovieCatalogService).
+ * Resolving a CharacterLibraryEntry's movieIds directly against
+ * ProductionContextRepository.get() therefore never matched anything.
+ * buildCanonicalMovieIdIndex() below translates slug id -> canonical
+ * movieId using the catalog, so this file can keep using CharacterLibrary
+ * for identity while actually resolving each movie correctly.
  *
  * No AI model calls, no rendering triggered anywhere in this file.
  */
 
 import { getSharedProductionContextRepository } from "./MovieProductionFactory";
 import { getSharedAssetManager, buildDirectorPlan } from "./MovieWorkspaceFactory";
+import { listMovieCatalog } from "./MovieCatalogService";
 import { DIRECTOR_PROFILE_PRESETS } from "../ai/director-engine/AIDirectorEngine";
 import { CharacterGenerator, type CastRole } from "../ai/movie-producer/CharacterGenerator";
 import { VoicePlanner, type VoicePlanIssue } from "../ai/asset-intelligence/VoicePlanner";
@@ -134,8 +128,25 @@ function resolveMovieBlueprint(movieId: string): MovieBlueprint | undefined {
   return getSharedProductionContextRepository().get(movieId)?.movieBlueprint;
 }
 
-function primaryMovieId(entry: CharacterLibraryEntry): string | undefined {
-  return entry.movieIds[entry.movieIds.length - 1];
+/** Maps DirectorEngine's title-slug Movie.id -> canonical movieId (productionId), scoped to userId's catalog — see file header. */
+function buildCanonicalMovieIdIndex(userId: string): Map<string, string> {
+  const repository = getSharedProductionContextRepository();
+  const index = new Map<string, string>();
+  for (const entry of listMovieCatalog(userId)) {
+    const slugId = repository.get(entry.movieId)?.movieBlueprint?.movie.id;
+    if (slugId) index.set(slugId, entry.movieId);
+  }
+  return index;
+}
+
+/** entry.movieIds translated into canonical movieIds, filtered to ones that resolved (i.e. belong to this user's catalog). */
+function canonicalMovieIds(entry: CharacterLibraryEntry, index: Map<string, string>): string[] {
+  return entry.movieIds.map((slugId) => index.get(slugId)).filter((id): id is string => Boolean(id));
+}
+
+function primaryMovieId(entry: CharacterLibraryEntry, index: Map<string, string>): string | undefined {
+  const ids = canonicalMovieIds(entry, index);
+  return ids[ids.length - 1];
 }
 
 function roleFor(character: Character, movie: MovieBlueprint, characterLibraryEntries: readonly CharacterLibraryEntry[], castPlanCache?: Map<string, ReturnType<CharacterGenerator["plan"]>>): CastRole | undefined {
@@ -164,15 +175,16 @@ function favoriteCameraShotFor(characterId: EntityId, movie: MovieBlueprint): Ca
   return best;
 }
 
-/** Module 1 — every character resident in the shared CharacterLibrary, resolved against its most recently registered movie. */
-export function listCharacterSummaries(): CharacterSummary[] {
+/** Module 1 — every character resident in the shared CharacterLibrary whose most recently registered movie belongs to userId's canonical catalog. */
+export function listCharacterSummaries(userId: string): CharacterSummary[] {
   const characterLibrary = getSharedAssetManager().getCharacterLibrary();
   const entries = characterLibrary.list();
   const castPlanCache = new Map<string, ReturnType<CharacterGenerator["plan"]>>();
+  const index = buildCanonicalMovieIdIndex(userId);
 
   return entries
     .map((entry): CharacterSummary | undefined => {
-      const movieId = primaryMovieId(entry);
+      const movieId = primaryMovieId(entry, index);
       if (!movieId) return undefined;
       const movie = resolveMovieBlueprint(movieId);
       const character = movie?.characters.find((c) => c.id === entry.characterId);
@@ -192,7 +204,7 @@ export function listCharacterSummaries(): CharacterSummary[] {
         gender: character.appearance.gender,
         age: character.appearance.age,
         voiceName: character.voiceProfile.voiceName,
-        movieCount: entry.movieIds.length,
+        movieCount: canonicalMovieIds(entry, index).length,
         primaryMovieId: movieId,
         primaryMovieTitle: movie.movie.title,
         hasContinuityIssue,
@@ -202,12 +214,12 @@ export function listCharacterSummaries(): CharacterSummary[] {
 }
 
 /** Module 2 — full Character resolved via the movie it was most recently registered under. */
-export function resolveCharacterProfile(characterId: EntityId): CharacterProfile | undefined {
+export function resolveCharacterProfile(characterId: EntityId, userId: string): CharacterProfile | undefined {
   const characterLibrary = getSharedAssetManager().getCharacterLibrary();
   const entry = characterLibrary.get(characterId);
   if (!entry) return undefined;
 
-  const movieId = primaryMovieId(entry);
+  const movieId = primaryMovieId(entry, buildCanonicalMovieIdIndex(userId));
   if (!movieId) return undefined;
   const movie = resolveMovieBlueprint(movieId);
   const character = movie?.characters.find((c) => c.id === characterId);
@@ -223,12 +235,12 @@ export function resolveCharacterProfile(characterId: EntityId): CharacterProfile
   };
 }
 
-/** Module 3 — every movie using this character, via CharacterLibraryEntry.movieIds (the library's own cross-movie relationship, not recomputed). */
-export function getCharacterMovieUsage(characterId: EntityId): MovieUsageEntry[] {
+/** Module 3 — every movie (in userId's catalog) using this character, via CharacterLibraryEntry.movieIds (the library's own cross-movie relationship, not recomputed) translated to canonical movieIds. */
+export function getCharacterMovieUsage(characterId: EntityId, userId: string): MovieUsageEntry[] {
   const entry = getSharedAssetManager().getCharacterLibrary().get(characterId);
   if (!entry) return [];
 
-  return entry.movieIds
+  return canonicalMovieIds(entry, buildCanonicalMovieIdIndex(userId))
     .map((movieId): MovieUsageEntry | undefined => {
       const movie = resolveMovieBlueprint(movieId);
       if (!movie) return undefined;
@@ -254,10 +266,10 @@ export function getCharacterMovieUsage(characterId: EntityId): MovieUsageEntry[]
  * from the real AIDirectorPlan.continuity (SceneContinuityEngine, reused
  * via buildDirectorPlan(), not recomputed).
  */
-export function getCharacterContinuity(characterId: EntityId, movieId?: string): CharacterContinuitySummary | undefined {
+export function getCharacterContinuity(characterId: EntityId, userId: string, movieId?: string): CharacterContinuitySummary | undefined {
   const entry = getSharedAssetManager().getCharacterLibrary().get(characterId);
   if (!entry) return undefined;
-  const resolvedMovieId = movieId ?? primaryMovieId(entry);
+  const resolvedMovieId = movieId ?? primaryMovieId(entry, buildCanonicalMovieIdIndex(userId));
   if (!resolvedMovieId) return undefined;
 
   const context = getSharedProductionContextRepository().get(resolvedMovieId);
@@ -279,10 +291,10 @@ export function getCharacterContinuity(characterId: EntityId, movieId?: string):
 }
 
 /** Module 6 — reads VoicePlanner's real assignment + issues for this character. VoicePlan only carries the id mapping; the full VoiceProfile lives on Character itself (the same object the id points to). */
-export function getCharacterVoiceProfile(characterId: EntityId, movieId?: string): CharacterVoiceProfile | undefined {
+export function getCharacterVoiceProfile(characterId: EntityId, userId: string, movieId?: string): CharacterVoiceProfile | undefined {
   const entry = getSharedAssetManager().getCharacterLibrary().get(characterId);
   if (!entry) return undefined;
-  const resolvedMovieId = movieId ?? primaryMovieId(entry);
+  const resolvedMovieId = movieId ?? primaryMovieId(entry, buildCanonicalMovieIdIndex(userId));
   if (!resolvedMovieId) return undefined;
 
   const movie = resolveMovieBlueprint(resolvedMovieId);
@@ -299,10 +311,10 @@ export function getCharacterVoiceProfile(characterId: EntityId, movieId?: string
 }
 
 /** Module 7 — filters MovieTimelineBuilder's real PlannedTimelineEntry[] (via AIDirectorPlan.timeline) to scenes this character appears in. Defaults to the most recently registered movie. */
-export function getCharacterTimeline(characterId: EntityId, movieId?: string): CharacterTimelineResult | undefined {
+export function getCharacterTimeline(characterId: EntityId, userId: string, movieId?: string): CharacterTimelineResult | undefined {
   const entry = getSharedAssetManager().getCharacterLibrary().get(characterId);
   if (!entry) return undefined;
-  const resolvedMovieId = movieId ?? primaryMovieId(entry);
+  const resolvedMovieId = movieId ?? primaryMovieId(entry, buildCanonicalMovieIdIndex(userId));
   if (!resolvedMovieId) return undefined;
 
   const context = getSharedProductionContextRepository().get(resolvedMovieId);
@@ -335,11 +347,12 @@ export function getCharacterTimeline(characterId: EntityId, movieId?: string): C
  * from CharacterLibraryEntry.movieIds, not the graph (Movie isn't a node
  * type in AssetDependencyGraph).
  */
-export function getCharacterRelationships(characterId: EntityId, movieId?: string): CharacterRelationships | undefined {
+export function getCharacterRelationships(characterId: EntityId, userId: string, movieId?: string): CharacterRelationships | undefined {
   const characterLibrary = getSharedAssetManager().getCharacterLibrary();
   const entry = characterLibrary.get(characterId);
   if (!entry) return undefined;
-  const resolvedMovieId = movieId ?? primaryMovieId(entry);
+  const index = buildCanonicalMovieIdIndex(userId);
+  const resolvedMovieId = movieId ?? primaryMovieId(entry, index);
   if (!resolvedMovieId) return undefined;
 
   const context = getSharedProductionContextRepository().get(resolvedMovieId);
@@ -375,7 +388,7 @@ export function getCharacterRelationships(characterId: EntityId, movieId?: strin
     };
   });
 
-  const movies: RelationshipMovieRef[] = entry.movieIds.map((id) => ({
+  const movies: RelationshipMovieRef[] = canonicalMovieIds(entry, index).map((id) => ({
     movieId: id,
     movieTitle: resolveMovieBlueprint(id)?.movie.title ?? id,
     isPrimary: id === resolvedMovieId,
