@@ -62,6 +62,8 @@ export interface UploadedReferenceAsset {
  */
 export interface ProductionContext {
   productionId: ProductionId;
+  /** The user who started this production (ProductionRequest.userId, captured at creation time). Undefined only for contexts created before this field existed. The one ownership signal the Movie Catalog scopes enumeration by — see MovieCatalogService.ts. */
+  userId?: string;
   movieBlueprint?: MovieBlueprint;
   uploadedReferenceAssets?: UploadedReferenceAsset[];
   sceneGenerationRequests?: SceneGenerationRequest[];
@@ -95,6 +97,16 @@ export interface ProductionContextRepository {
    * updating the field(s) they own.
    */
   save(context: ProductionContext): void;
+
+  /**
+   * Every stored context — the canonical enumeration this repository was
+   * previously missing (see file header). Consumed by MovieCatalogService,
+   * not by individual features directly, so every feature enumerates
+   * movies through one shared filter (ownership, presence of a
+   * movieBlueprint) instead of each re-deriving its own notion of "which
+   * movies exist."
+   */
+  list(): ProductionContext[];
 }
 
 declare global {
@@ -142,5 +154,9 @@ export class InMemoryProductionContextRepository implements ProductionContextRep
 
   save(context: ProductionContext): void {
     this.contexts.set(context.productionId, context);
+  }
+
+  list(): ProductionContext[] {
+    return Array.from(this.contexts.values());
   }
 }

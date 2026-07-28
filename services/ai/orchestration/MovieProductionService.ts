@@ -367,7 +367,9 @@ export class MovieProductionService {
     // createMovieBlueprint() finishes. getOrCreate() is idempotent — the
     // second call below (once the blueprint is ready) returns this exact
     // same stored context rather than creating a duplicate.
-    this.contextRepository.getOrCreate(request.productionId);
+    const initialContext = this.contextRepository.getOrCreate(request.productionId);
+    initialContext.userId = request.userId;
+    this.contextRepository.save(initialContext);
 
     let blueprint: MovieBlueprint;
     try {
