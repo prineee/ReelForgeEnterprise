@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
 import {
   createMovieProductionService,
+  getSharedProductionContextRepository,
   MovieProductionFactoryError,
-  __debugRepositoryState,
 } from '@/services/infrastructure/MovieProductionFactory'
 import { ProductionStatus } from '@/services/ai/orchestration/MovieProductionContracts'
 import type { ProductionProgress } from '@/services/ai/orchestration/MovieProductionContracts'
@@ -50,15 +51,24 @@ export async function GET(
   { params }: { params: Promise<{ productionId: string }> }
 ) {
   const { productionId } = await params
-  console.log("[STATUS ROUTE HIT]", productionId)
-
-  // TEMPORARY DIAGNOSTIC — trace only, fired on entry so the module/
-  // repository identity is observable regardless of what happens next.
-  const traceOnEntry = __debugRepositoryState(`GET /api/movie/status/${productionId}:entry`)
 
   // 1. Validate productionId.
   if (!productionId || productionId.trim().length === 0) {
     return NextResponse.json({ error: 'Invalid productionId.' }, { status: 400 })
+  }
+
+  // 1b. Auth + ownership — this production's ProductionContext.userId must
+  // match the requesting user, the same field MovieCatalogService's
+  // enumeration already scopes by (Sprint 16, Task 3), so a productionId
+  // can't be used to poll another user's production status.
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  const context = getSharedProductionContextRepository().get(productionId)
+  if (context && context.userId !== user.id) {
+    return NextResponse.json({ error: 'Unknown production.' }, { status: 404 })
   }
 
   // 2. const service = createMovieProductionService();
@@ -80,12 +90,11 @@ export async function GET(
     const progress = await service.getProgress(productionId)
 
     // 4. Return HTTP 200.
-    return NextResponse.json({ ...toResponseBody(progress), _trace: traceOnEntry })
+    return NextResponse.json(toResponseBody(progress))
   } catch (error) {
     if (isUnknownProductionError(error)) {
-      return NextResponse.json({ error: 'Unknown production.', _trace: traceOnEntry }, { status: 404 })
+      return NextResponse.json({ error: 'Unknown production.' }, { status: 404 })
     }
-    const message = error instanceof Error ? error.message : 'Progress retrieval failure.'
-    return NextResponse.json({ error: message, _trace: traceOnEntry }, { status: 500 })
+    return NextResponse.json({ error: 'Progress retrieval failure.' }, { status: 500 })
   }
 }

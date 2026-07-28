@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
 import {
   createMovieWorkflowEngine,
   MovieProductionFactoryError,
-  __debugRepositoryState,
 } from '@/services/infrastructure/MovieProductionFactory'
 
 /**
@@ -18,16 +18,18 @@ import {
 export async function GET(_req: Request, { params }: { params: Promise<{ workflowId: string }> }) {
   const { workflowId } = await params
 
-  // TEMPORARY DIAGNOSTIC — trace only. Note this route's own "known ids"
-  // (engine.getWorkflow's Map, WorkflowEngine's `workflows` field) are
-  // separate in-memory state from ProductionContextRepository — this call
-  // only reports the *repository*'s identity/contents for cross-comparison
-  // against POST /api/movie/create and GET /api/movie/status.
-  const traceOnEntry = __debugRepositoryState(`GET /api/workflow/status/${workflowId}:entry`)
-
   // 1. Validate workflowId.
   if (!workflowId || workflowId.trim().length === 0) {
     return NextResponse.json({ error: 'Invalid workflowId.' }, { status: 400 })
+  }
+
+  // 1b. Auth — mirrors GET /api/workflow/list's ownership pattern
+  // (context.request.userId === user.id) rather than exposing any
+  // workflow's full status/credit ledger to any authenticated user.
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   // 2. const engine = createMovieWorkflowEngine();
@@ -46,8 +48,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ workflo
 
   // 3. Look up the workflow.
   const context = engine.getWorkflow(workflowId)
-  if (!context) {
-    return NextResponse.json({ error: 'Unknown workflow.', _trace: traceOnEntry }, { status: 404 })
+  if (!context || context.request.userId !== user.id) {
+    return NextResponse.json({ error: 'Unknown workflow.' }, { status: 404 })
   }
 
   // 4. Return HTTP 200 with the full live status.
@@ -70,10 +72,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ workflo
       stages: context.stages.map((s) => ({ stage: s.stage, status: s.status, retryCount: s.retryCount, error: s.error })),
       artifactCount: context.artifacts.length,
       errors: context.errors,
-      _trace: traceOnEntry,
     })
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Status retrieval failure.'
-    return NextResponse.json({ error: message }, { status: 500 })
+  } catch {
+    return NextResponse.json({ error: 'Status retrieval failure.' }, { status: 500 })
   }
 }

@@ -545,27 +545,6 @@ export function getSharedProductionContextRepository(): ProductionContextReposit
   return sharedContextRepository;
 }
 
-// ── TEMPORARY DIAGNOSTIC INSTRUMENTATION — trace only, not a fix ───────────
-// Tags sharedContextRepository with a random id the instant this module is
-// first evaluated, so every subsequent read of that id proves (or
-// disproves) "this is the same module instance" across requests. If this
-// module gets re-evaluated for any reason (hot reload invalidation, a
-// second module graph, a separate process), REPO_TRACE_ID changes and the
-// Map starts back at size 0 — that's the exact signal this investigation
-// is looking for.
-const REPO_TRACE_ID = `repo-${Math.random().toString(36).slice(2, 10)}-pid${process.pid}`;
-console.log(`[TRACE] MovieProductionFactory module evaluated. REPO_TRACE_ID=${REPO_TRACE_ID}`);
-
-export function __debugRepositoryState(label: string): { repoTraceId: string; pid: number; size: number; ids: string[] } {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const contexts = (sharedContextRepository as any).contexts as Map<string, unknown>;
-  const ids = Array.from(contexts.keys());
-  const state = { repoTraceId: REPO_TRACE_ID, pid: process.pid, size: contexts.size, ids };
-  console.log(`[TRACE][${label}]`, state);
-  return state;
-}
-// ── END TEMPORARY DIAGNOSTIC INSTRUMENTATION ────────────────────────────────
-
 // ── Factory ─────────────────────────────────────────────────────────────
 
 /**
@@ -685,9 +664,6 @@ export function createMovieProductionService(config?: MovieProductionFactoryConf
     renderOrchestrator
   );
 
-  // TEMPORARY DIAGNOSTIC — trace only.
-  __debugRepositoryState('createMovieProductionService:return');
-
   return service;
 }
 
@@ -718,11 +694,7 @@ let sharedWorkflowEngine: WorkflowEngine | undefined;
  * in-flight workflows stay visible across requests.
  */
 export function createMovieWorkflowEngine(config?: MovieProductionFactoryConfig): WorkflowEngine {
-  // TEMPORARY DIAGNOSTIC — trace only.
-  console.log(`[TRACE] createMovieWorkflowEngine() called. sharedWorkflowEngine already exists: ${!!sharedWorkflowEngine} REPO_TRACE_ID=${REPO_TRACE_ID}`);
-
   if (!sharedWorkflowEngine) {
-    console.log('[TRACE] createMovieWorkflowEngine() constructing a NEW WorkflowEngine (cache was empty).');
     const movieProductionService = createMovieProductionService(config);
     sharedWorkflowEngine = createWorkflowEngine(movieProductionService, {
       queueManager: sharedQueueManager,

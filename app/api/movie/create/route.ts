@@ -3,7 +3,6 @@ import { createClient } from '@/lib/supabase/server'
 import {
   createMovieWorkflowEngine,
   getSharedProductionContextRepository,
-  __debugRepositoryState,
 } from '@/services/infrastructure/MovieProductionFactory'
 
 const MIN_IDEA_LENGTH = 10
@@ -30,25 +29,10 @@ const MAX_IDEA_LENGTH = 5000
  * route keeps working unchanged.
  */
 export async function POST(req: Request) {
-  console.log('[VERIFY] 1. POST /api/movie/create entered') // TEMPORARY — remove after verification
-  // TEMPORARY DIAGNOSTIC — trace only, fired unconditionally (even on auth
-  // failure) so the module/repository identity is observable regardless of
-  // whether the rest of the request succeeds.
-  const traceOnEntry = __debugRepositoryState('POST /api/movie/create:entry')
-
   const supabase = await createClient()
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  const { data: { user } } = await supabase.auth.getUser()
   if (!user) {
-    // authError was previously discarded, leaving every rejection
-    // indistinguishable ("no cookie sent" vs "expired session" vs "invalid
-    // token" all just said "Unauthorized"). Surfacing Supabase's own reason
-    // doesn't weaken the check itself — getUser() still must return a real
-    // user for the request to proceed — it just makes a genuine rejection
-    // diagnosable instead of opaque.
-    return NextResponse.json(
-      { error: 'Unauthorized', reason: authError?.message ?? 'No user for current session.', _trace: traceOnEntry },
-      { status: 401 }
-    )
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   // 1. Parse request.
@@ -106,16 +90,12 @@ export async function POST(req: Request) {
 
     const context = engine.getWorkflow(workflowId)
 
-    // TEMPORARY DIAGNOSTIC — trace only, from an earlier debugging pass.
-    const traceOnCreate = __debugRepositoryState('POST /api/movie/create:after-startWorkflowInBackground')
-
     return NextResponse.json({
       success: true,
       productionId: workflowId,
       workflowId,
       status: context?.status ?? 'CREATED',
       currentStage: null,
-      _trace: traceOnCreate,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to start workflow.'

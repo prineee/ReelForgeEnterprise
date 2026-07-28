@@ -6,6 +6,13 @@ export async function GET(req: Request) {
   const supabase =
     await createClient();
 
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const url =
     new URL(req.url);
 
@@ -32,6 +39,7 @@ export async function GET(req: Request) {
         .from("movies") as any)
         .select("*")
         .eq("id", movieId)
+        .eq("user_id", user.id)
         .single();
 
     if (!data) {
