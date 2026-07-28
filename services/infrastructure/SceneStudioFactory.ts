@@ -13,20 +13,24 @@
  * There is no cross-movie "Scene Library" (unlike CharacterLibrary/
  * LocationLibrary — no such concept exists for scenes anywhere in this
  * codebase, and this file does not invent one). Scene Studio's routes
- * address a scene by sceneId alone, with no movieId in the URL, so this
- * file reuses the exact bridge CharacterStudioFactory.ts already
- * established: CharacterLibrary/LocationLibrary's own movieIds (already
- * public, already cross-movie) tell us which movies are known this
- * server process's lifetime; ProductionContextRepository.get(movieId)
- * (already public) resolves each one's real MovieBlueprint, which is
- * then searched for the requested sceneId. Same honest in-memory-now
- * scope as every other part of this codebase.
+ * address a scene by sceneId alone, with no movieId in the URL, so
+ * "which movies to search" comes from MovieCatalogService (Sprint 16,
+ * Task 3) — listOwnedMovieIds(userId), scoped to the requesting user —
+ * rather than the CharacterLibrary/LocationLibrary movieIds bridge this
+ * file used before. That bridge was also silently broken: those
+ * libraries key movieIds by DirectorEngine's title-slug Movie.id, a
+ * different id space from ProductionContextRepository's productionId key
+ * (see CharacterStudioFactory.ts's buildCanonicalMovieIdIndex for the
+ * same bug fixed there) — so ProductionContextRepository.get(movieId)
+ * here never matched anything for a slug id. MovieCatalogService reads
+ * productionId directly, so no translation layer is needed.
  *
  * No AI model calls, no rendering triggered anywhere in this file.
  */
 
 import { getSharedProductionContextRepository } from "./MovieProductionFactory";
 import { getSharedAssetManager, getSharedRenderJobManager, buildDirectorPlan } from "./MovieWorkspaceFactory";
+import { listOwnedMovieIds } from "./MovieCatalogService";
 import { buildMovieProductionPlan } from "./MovieProducerFactory";
 import { DIRECTOR_PROFILE_PRESETS } from "../ai/director-engine/AIDirectorEngine";
 import type { AIDirectorPlan } from "../ai/director-engine/AIDirectorEngine";
@@ -71,19 +75,13 @@ interface SceneContext {
   sceneGenerationRequest?: SceneGenerationRequest;
 }
 
-function knownMovieIds(): string[] {
-  const characterMovieIds = getSharedAssetManager().getCharacterLibrary().list().flatMap((entry) => entry.movieIds);
-  const locationMovieIds = getSharedAssetManager().getLocationLibrary().list().flatMap((entry) => entry.movieIds);
-  return Array.from(new Set([...characterMovieIds, ...locationMovieIds]));
-}
-
 function resolveMovieBlueprint(movieId: string): MovieBlueprint | undefined {
   return getSharedProductionContextRepository().get(movieId)?.movieBlueprint;
 }
 
-/** Searches every known movie for a scene with this id — there is no global scene index, so this is a real (small, session-scoped) linear search, not a fabricated lookup. */
-function resolveSceneContext(sceneId: EntityId): SceneContext | undefined {
-  for (const movieId of knownMovieIds()) {
+/** Searches every movie in userId's catalog for a scene with this id — there is no global scene index, so this is a real (small) linear search, not a fabricated lookup. */
+function resolveSceneContext(sceneId: EntityId, userId: string): SceneContext | undefined {
+  for (const movieId of listOwnedMovieIds(userId)) {
     const context = getSharedProductionContextRepository().get(movieId);
     const movie = context?.movieBlueprint;
     if (!context || !movie) continue;
@@ -151,11 +149,11 @@ export interface SceneBrowserSummary {
   renderStatus: RenderJobStatus | "DRAFTED";
 }
 
-/** Every scene across every known movie (see knownMovieIds() above) — real MovieBlueprint.scenes, not a second scene index. */
-export function listSceneSummaries(): SceneBrowserSummary[] {
+/** Every scene across every movie in userId's catalog — real MovieBlueprint.scenes, not a second scene index. */
+export function listSceneSummaries(userId: string): SceneBrowserSummary[] {
   const summaries: SceneBrowserSummary[] = [];
 
-  for (const movieId of knownMovieIds()) {
+  for (const movieId of listOwnedMovieIds(userId)) {
     const movie = resolveMovieBlueprint(movieId);
     if (!movie) continue;
 
@@ -202,8 +200,8 @@ export interface SceneOverview {
   transitionOutName?: string;
 }
 
-export function getSceneOverview(sceneId: EntityId): SceneOverview | undefined {
-  const ctx = resolveSceneContext(sceneId);
+export function getSceneOverview(sceneId: EntityId, userId: string): SceneOverview | undefined {
+  const ctx = resolveSceneContext(sceneId, userId);
   if (!ctx) return undefined;
 
   const act = ctx.directorPlan.storyPlan.acts.find(
@@ -236,8 +234,8 @@ export interface CameraInspectorData {
 }
 
 /** Reuses DirectorPromptPipeline's real enrichment input — DirectorProfile.promptStyleModifiers, the exact style data DirectorPromptPipeline appends to this scene's composed prompt — as "Cinematic Style," rather than inventing a scene-level style field that doesn't exist. */
-export function getCameraInspector(sceneId: EntityId): CameraInspectorData | undefined {
-  const ctx = resolveSceneContext(sceneId);
+export function getCameraInspector(sceneId: EntityId, userId: string): CameraInspectorData | undefined {
+  const ctx = resolveSceneContext(sceneId, userId);
   if (!ctx) return undefined;
 
   const shotPreset = ctx.cameraPlan ? getSharedAssetManager().getShotLibrary().matchCameraPlan(ctx.cameraPlan) : undefined;
@@ -256,8 +254,8 @@ export interface LightingInspectorData {
   mood?: string;
 }
 
-export function getLightingInspector(sceneId: EntityId): LightingInspectorData | undefined {
-  const ctx = resolveSceneContext(sceneId);
+export function getLightingInspector(sceneId: EntityId, userId: string): LightingInspectorData | undefined {
+  const ctx = resolveSceneContext(sceneId, userId);
   if (!ctx) return undefined;
 
   return {
@@ -281,8 +279,8 @@ export interface CharacterPlacementData {
 }
 
 /** Speaking order is read directly from Scene.dialogue's real array order (already-authored screenplay data) - not derived or guessed. Emotional state is EmotionPlan.characterStates, already computed by the Director pipeline. "Screen presence" has no backing field anywhere and is intentionally omitted rather than approximated from dialogue line count. */
-export function getCharacterPlacement(sceneId: EntityId): CharacterPlacementData | undefined {
-  const ctx = resolveSceneContext(sceneId);
+export function getCharacterPlacement(sceneId: EntityId, userId: string): CharacterPlacementData | undefined {
+  const ctx = resolveSceneContext(sceneId, userId);
   if (!ctx) return undefined;
 
   const speakingOrderByCharacterId = new Map<EntityId, number>();
@@ -314,8 +312,8 @@ export interface LocationInspectorData {
 }
 
 /** Reuses LocationPlanner (services/ai/movie-producer/LocationPlanner.ts, Sprint 10) for the reuse signal - itself a thin composition over LocationLibrary, not a second reuse check. */
-export function getLocationInspector(sceneId: EntityId): LocationInspectorData | undefined {
-  const ctx = resolveSceneContext(sceneId);
+export function getLocationInspector(sceneId: EntityId, userId: string): LocationInspectorData | undefined {
+  const ctx = resolveSceneContext(sceneId, userId);
   if (!ctx) return undefined;
 
   const locationPlan = locationPlanner.plan(ctx.movie, ctx.assetCatalog.locations);
@@ -344,8 +342,8 @@ export interface AssetInspectorData {
   soundEffects: SoundEffectCue[];
 }
 
-export function getAssetInspector(sceneId: EntityId): AssetInspectorData | undefined {
-  const ctx = resolveSceneContext(sceneId);
+export function getAssetInspector(sceneId: EntityId, userId: string): AssetInspectorData | undefined {
+  const ctx = resolveSceneContext(sceneId, userId);
   if (!ctx) return undefined;
 
   const characters: Character[] = ctx.scene.characterIds
@@ -389,8 +387,8 @@ export interface ProductionPreviewData {
 }
 
 /** Reuses MovieProducer's already-computed MovieProductionPlan (via MovieProducerFactory.buildMovieProductionPlan(), Sprint 10) - schedule/quality are read off it, never recomputed. No render job is submitted; recommendedProvider is ProductionPlanner's own read-only ProviderSelector.select() preview. */
-export function getProductionPreview(sceneId: EntityId): ProductionPreviewData | undefined {
-  const ctx = resolveSceneContext(sceneId);
+export function getProductionPreview(sceneId: EntityId, userId: string): ProductionPreviewData | undefined {
+  const ctx = resolveSceneContext(sceneId, userId);
   if (!ctx) return undefined;
 
   const scheduledUnit = ctx.productionPlan?.schedule.units.find((unit) => unit.assetType === "SCENE" && unit.assetId === sceneId);
@@ -417,8 +415,8 @@ export interface PromptViewerData {
 }
 
 /** Reuses DirectorPromptPipeline's real, already-composed SceneGenerationRequest - never recomposes a prompt. */
-export function getPromptViewer(sceneId: EntityId): PromptViewerData | undefined {
-  const ctx = resolveSceneContext(sceneId);
+export function getPromptViewer(sceneId: EntityId, userId: string): PromptViewerData | undefined {
+  const ctx = resolveSceneContext(sceneId, userId);
   if (!ctx) return undefined;
 
   return {
@@ -439,8 +437,8 @@ export interface SceneNavigationData {
   characterLinks: { characterId: EntityId; name: string }[];
 }
 
-export function getSceneNavigation(sceneId: EntityId): SceneNavigationData | undefined {
-  const ctx = resolveSceneContext(sceneId);
+export function getSceneNavigation(sceneId: EntityId, userId: string): SceneNavigationData | undefined {
+  const ctx = resolveSceneContext(sceneId, userId);
   if (!ctx) return undefined;
 
   return {

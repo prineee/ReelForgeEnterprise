@@ -1,5 +1,6 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
+import { createClient } from "@/lib/supabase/server";
 import { ArrowLeft, Camera, Clapperboard, Info, MapPin, Sun, Users, Boxes, Cpu, Terminal } from "lucide-react";
 import { SceneStudioTabs } from "@/components/scene-studio/SceneStudioTabs";
 import { SceneOverviewPanel } from "@/components/scene-detail/SceneOverviewPanel";
@@ -34,13 +35,19 @@ export const dynamic = "force-dynamic";
  */
 export default async function SceneDetailPage({ params }: { params: Promise<{ sceneId: string }> }) {
   const { sceneId } = await params;
-  const overview = getSceneOverview(sceneId);
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const overview = getSceneOverview(sceneId, user.id);
   if (!overview) notFound();
-  const camera = getCameraInspector(sceneId) ?? { cameraPlan: undefined, shotPresetName: undefined, cinematicStyleModifiers: [] };
-  const lighting = getLightingInspector(sceneId) ?? { environment: undefined, mood: undefined };
-  const placement = getCharacterPlacement(sceneId) ?? { characters: [], dialogue: undefined };
-  const location = getLocationInspector(sceneId) ?? { environment: undefined, relatedScenes: [], isReusedFromPriorMovie: false };
-  const assets = getAssetInspector(sceneId) ?? {
+  const camera = getCameraInspector(sceneId, user.id) ?? { cameraPlan: undefined, shotPresetName: undefined, cinematicStyleModifiers: [] };
+  const lighting = getLightingInspector(sceneId, user.id) ?? { environment: undefined, mood: undefined };
+  const placement = getCharacterPlacement(sceneId, user.id) ?? { characters: [], dialogue: undefined };
+  const location = getLocationInspector(sceneId, user.id) ?? { environment: undefined, relatedScenes: [], isReusedFromPriorMovie: false };
+  const assets = getAssetInspector(sceneId, user.id) ?? {
     characterReferenceImages: [],
     environmentReferenceImages: [],
     videoUrl: undefined,
@@ -48,15 +55,15 @@ export default async function SceneDetailPage({ params }: { params: Promise<{ sc
     voiceAssignments: [],
     soundEffects: [],
   };
-  const production = getProductionPreview(sceneId) ?? {
+  const production = getProductionPreview(sceneId, user.id) ?? {
     recommendedProvider: undefined,
     estimatedCredits: undefined,
     estimatedRenderTimeSeconds: undefined,
     qualityScore: undefined,
     continuityIssues: [],
   };
-  const prompt = getPromptViewer(sceneId) ?? { positivePrompt: undefined, negativePrompt: undefined, aspectRatio: undefined, quality: undefined, expectedDuration: undefined };
-  const navigation = getSceneNavigation(sceneId) ?? { movieId: overview.movieId, previousSceneId: undefined, nextSceneId: undefined, characterLinks: [] };
+  const prompt = getPromptViewer(sceneId, user.id) ?? { positivePrompt: undefined, negativePrompt: undefined, aspectRatio: undefined, quality: undefined, expectedDuration: undefined };
+  const navigation = getSceneNavigation(sceneId, user.id) ?? { movieId: overview.movieId, previousSceneId: undefined, nextSceneId: undefined, characterLinks: [] };
 
   return (
     <div className="min-h-screen bg-surface px-4 py-8 text-white sm:px-8">
