@@ -13,13 +13,12 @@
  * reference images), and VIDEO (Stage 4 — scene videos); Character
  * (as its own asset), Voice, Poster, and Thumbnail generation aren't
  * implemented stages yet (see MovieProductionService.ts's
- * IMPLEMENTED_STAGES). Per Task 8's explicit instruction to use
- * placeholders only where outputs aren't available, this adapter emits
- * real rows for what genuinely exists and does not synthesize fake "not
- * generated yet" cards for the others — MOCK_ASSETS already demonstrates
- * what those categories look like once real generation for them lands,
- * without cluttering the live grid with rows that don't correspond to
- * anything actually produced.
+ * IMPLEMENTED_STAGES). This adapter emits real rows only for what
+ * genuinely exists and does not synthesize "not generated yet" cards for
+ * the others (Character, Voice, Poster, Thumbnail) — those categories
+ * simply don't appear in the grid until real generation for them lands,
+ * rather than cluttering it with rows that don't correspond to anything
+ * actually produced (Sprint 16, Task 4: no fabricated production data).
  */
 
 import type { AssetType, LibraryAsset } from './types'

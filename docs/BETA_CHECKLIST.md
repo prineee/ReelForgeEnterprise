@@ -95,10 +95,6 @@ backend/data-model changes, or large refactors) — flagging for a deliberate fo
   Studio, Scene Studio, and the Movie Production/Library pages can only show what
   this server process has seen since it started. A real "list all productions"
   backend capability is a data-model change, not a UI fix.
-- **`app/(dashboard)/asset-manager` also has its own mock-data default** (`MOCK_ASSETS`
-  in its local `mockData.ts`) — same pattern as Movie Production/Library, found late
-  in this pass; only the two pages named in the original beta-readiness request were
-  fixed. Recommend the same treatment.
 - **Two competing "Movie Studio" experiences remain** — the legacy page is still live
   (unlinked, reachable by URL). Consolidating or removing it is a product call, not
   made here.

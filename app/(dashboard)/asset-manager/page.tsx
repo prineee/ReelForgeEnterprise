@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { Boxes } from 'lucide-react'
-import { MOCK_ASSETS, computeAssetMetrics } from './mockData'
+import { computeAssetMetrics } from './mockData'
 import { FILTER_TO_TYPE } from './assetMeta'
 import { fetchWorkflowList, adaptWorkflowsToAssets } from './adapter'
 import type { AssetFilter, LibraryAsset } from './types'
@@ -35,22 +35,13 @@ export default function AssetManagerPage() {
   const [filter, setFilter] = useState<AssetFilter>('all')
   const [selectedAsset, setSelectedAsset] = useState<LibraryAsset | null>(null)
 
-  // Placeholder demo data — see mockData.ts. Brief simulated load so the
-  // skeleton state is real, not skipped.
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setAssets(MOCK_ASSETS)
-      setLoading(false)
-    }, 600)
-    return () => clearTimeout(timer)
-  }, [])
-
   // Task 8: "Workflow completion automatically publishes Generated
   // Assets" — every real artifact recorded on a WorkflowEngine workflow
-  // (see /api/workflow/list) is merged ahead of the placeholder catalog,
-  // re-synced on an interval so new assets show up as generation
-  // progresses. See adapter.ts for exactly which asset types are real
-  // today vs. still placeholder-only.
+  // (see /api/workflow/list) is the only source of rows here, re-synced
+  // on an interval so new assets show up as generation progresses. See
+  // adapter.ts for exactly which asset types are real today. No demo
+  // catalog is seeded — an empty result is a real empty state, not a
+  // placeholder to fill in (Sprint 16, Task 4).
   useEffect(() => {
     let cancelled = false
     let timer: ReturnType<typeof setInterval> | null = null
@@ -64,7 +55,9 @@ export default function AssetManagerPage() {
         const realIds = new Set(real.map((a) => a.id))
         setAssets((prev) => [...real, ...prev.filter((a) => !realIds.has(a.id))])
       } catch {
-        // Best-effort live sync — the placeholder catalog still renders if this fails (e.g. logged out, factory not configured).
+        // Best-effort live sync — the grid just stays empty if this fails (e.g. logged out, factory not configured).
+      } finally {
+        if (!cancelled) setLoading(false)
       }
     }
 
