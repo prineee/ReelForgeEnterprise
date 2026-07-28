@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSharedRenderJobManager } from "@/services/infrastructure/MovieWorkspaceFactory";
+import { getSharedProductionContextRepository } from "@/services/infrastructure/MovieProductionFactory";
 
 /**
  * Real RenderJobManager (services/rendering/jobs/RenderJobManager.ts,
@@ -18,6 +19,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ movieId
   } = await supabase.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const context = getSharedProductionContextRepository().get(movieId);
+  if (!context || context.userId !== user.id) {
+    return NextResponse.json({ error: "Unknown movie." }, { status: 404 });
   }
 
   try {

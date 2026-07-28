@@ -51,7 +51,7 @@ if (creditCheck.ok === false) {
 
     if (movie_id) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (supabase.from('movies') as any).update({ status: 'generating' }).eq('id', movie_id)
+      await (supabase.from('movies') as any).update({ status: 'generating' }).eq('id', movie_id).eq('user_id', user.id)
     }
     const renderResult =
       await MovieRenderPipeline.render({

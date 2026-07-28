@@ -37,7 +37,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ movieId
   }
 
   const context = getSharedProductionContextRepository().get(movieId);
-  if (!context) {
+  if (!context || context.userId !== user.id) {
     return NextResponse.json({ error: "Unknown movie." }, { status: 404 });
   }
 

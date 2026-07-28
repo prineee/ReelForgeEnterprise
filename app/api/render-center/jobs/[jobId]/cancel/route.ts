@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSharedRenderJobManager } from "@/services/infrastructure/MovieWorkspaceFactory";
+import { getSharedProductionContextRepository } from "@/services/infrastructure/MovieProductionFactory";
 import { RenderJobManagerError } from "@/services/rendering/jobs/RenderJobManager";
 
 /**
@@ -20,8 +21,18 @@ export async function POST(_req: Request, { params }: { params: Promise<{ jobId:
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const manager = getSharedRenderJobManager();
+  const existing = manager.getJob(jobId);
+  if (!existing) {
+    return NextResponse.json({ error: `No render job "${jobId}".` }, { status: 404 });
+  }
+  const owningContext = existing.projectId ? getSharedProductionContextRepository().get(existing.projectId) : undefined;
+  if (!owningContext || owningContext.userId !== user.id) {
+    return NextResponse.json({ error: `No render job "${jobId}".` }, { status: 404 });
+  }
+
   try {
-    const job = getSharedRenderJobManager().cancel(jobId);
+    const job = manager.cancel(jobId);
     return NextResponse.json({ success: true, job });
   } catch (error) {
     if (error instanceof RenderJobManagerError) {

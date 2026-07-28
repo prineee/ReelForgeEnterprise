@@ -8,6 +8,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: series } = await (supabase.from('series') as any)
+      .select('id')
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .single()
+    if (!series) return NextResponse.json({ error: 'Series not found' }, { status: 404 })
+
     const { project_id, title, video_url, thumbnail_url, duration } = await req.json()
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
