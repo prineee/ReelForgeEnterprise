@@ -1,10 +1,12 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { requireAdmin } from '@/lib/admin'
 
 export async function GET() {
+  const check = await requireAdmin()
+  if (!check.ok) return check.response
+
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -13,10 +15,7 @@ export async function GET() {
       error: { message: string } | null
     }
 
-    console.log('[admin] rpc result:', JSON.stringify(statsData)?.slice(0, 300))
-    console.log('[admin] rpc error:', rpcError?.message)
-
-    if (rpcError) return NextResponse.json({ error: rpcError.message }, { status: 500 })
+    if (rpcError) return NextResponse.json({ error: 'Failed to load admin stats.' }, { status: 500 })
     if (!statsData) return NextResponse.json({ error: 'No data' }, { status: 500 })
 
     const PLAN_REVENUE: Record<string, number> = { starter: 6, pro: 18, agency: 60 }
