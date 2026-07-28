@@ -1,4 +1,6 @@
 import { Boxes } from "lucide-react";
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
 import { BackToDashboardLink } from "@/components/movie-studio/BackToDashboardLink";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { RenderCenterJobCard } from "@/components/render-dashboard/RenderCenterJobCard";
@@ -46,11 +48,17 @@ const COLUMNS: { title: string; statuses: readonly RenderJobStatus[] }[] = [
  */
 export default async function RenderCenterPage({ searchParams }: { searchParams: Promise<{ job?: string }> }) {
   const { job: selectedJobId } = await searchParams;
-  const jobs = listRenderJobSummaries();
-  const selectedJobDetail = selectedJobId ? getJobDetail(selectedJobId) : undefined;
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const jobs = listRenderJobSummaries(user.id);
+  const selectedJobDetail = selectedJobId ? getJobDetail(selectedJobId, user.id) : undefined;
   const providers = getProviderMonitor();
-  const productionOverview = getProductionOverview();
-  const qualityPanels = listQualityPanels();
+  const productionOverview = getProductionOverview(user.id);
+  const qualityPanels = listQualityPanels(user.id);
   const performanceAnalytics = getPerformanceAnalytics();
 
   return (

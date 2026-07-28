@@ -14,7 +14,16 @@
  * through CharacterLibrary/LocationLibrary — every RenderJob already
  * self-carries a real projectId (set at submit() time), so the set of
  * "movies with render activity" is derived directly from
- * RenderJobManager.list(), which is itself already global/unfiltered.
+ * RenderJobManager.list(). That list is itself global/unfiltered (every
+ * user's jobs), so the movie-identifying panels below (Dashboard, Job
+ * Detail, Production Overview, Quality Panel — anything that surfaces a
+ * movieTitle/movieId/sceneTitle) are scoped to MovieCatalogService's
+ * listOwnedMovieIds(userId) (Sprint 16, Task 3) before being returned;
+ * without that, any authenticated user could see every other user's
+ * movie titles and scene names through the render queue. Provider
+ * Monitor and Performance Analytics stay global/unscoped — they report
+ * provider- and ledger-level operational stats with no movie identity in
+ * them, not a movie enumeration surface.
  *
  * No AI model calls, no rendering triggered by any function in this file
  * — mutations (cancel/retry) are intentionally NOT here; they live in
@@ -24,6 +33,7 @@
 
 import { getSharedProductionContextRepository } from "./MovieProductionFactory";
 import { getSharedRenderJobManager } from "./MovieWorkspaceFactory";
+import { listOwnedMovieIds } from "./MovieCatalogService";
 import { buildMovieProductionPlan } from "./MovieProducerFactory";
 import { DIRECTOR_PROFILE_PRESETS } from "../ai/director-engine/AIDirectorEngine";
 import { createDefaultProviderRegistry } from "../rendering/ProviderRegistry";
@@ -50,9 +60,18 @@ function resolveMovieTitle(projectId: string | undefined): string | undefined {
   return getSharedProductionContextRepository().get(projectId)?.movieBlueprint?.movie.title;
 }
 
-/** Every distinct projectId that has ever submitted a render job — the only real, non-fabricated way to discover "known movies" for this feature (RenderJob.projectId is set at submit() time; there is no separate movie-enumeration service anywhere in this codebase). */
-function knownProjectIds(jobs: readonly RenderJob[]): string[] {
-  return Array.from(new Set(jobs.map((job) => job.projectId).filter((id): id is string => Boolean(id))));
+/** Every distinct projectId that has submitted a render job, restricted to movies in userId's catalog. */
+function knownProjectIds(jobs: readonly RenderJob[], userId: string): string[] {
+  const ownedIds = listOwnedMovieIds(userId);
+  return Array.from(new Set(jobs.map((job) => job.projectId).filter((id): id is string => Boolean(id) && ownedIds.has(id))));
+}
+
+/** RenderJobManager.list() filtered down to jobs whose movie belongs to userId's catalog — see file header for why this filter exists. */
+function ownedJobs(userId: string): RenderJob[] {
+  const ownedIds = listOwnedMovieIds(userId);
+  return jobManager()
+    .list()
+    .filter((job) => job.projectId !== undefined && ownedIds.has(job.projectId));
 }
 
 // ── Module 1 — Render Dashboard ─────────────────────────────────────────
@@ -70,9 +89,9 @@ export interface RenderJobSummary {
   progress: RenderJobProgress;
 }
 
-export function listRenderJobSummaries(): RenderJobSummary[] {
+export function listRenderJobSummaries(userId: string): RenderJobSummary[] {
   const manager = jobManager();
-  return manager.list().map((job) => ({
+  return ownedJobs(userId).map((job) => ({
     jobId: job.jobId,
     projectId: job.projectId,
     movieTitle: resolveMovieTitle(job.projectId),
@@ -104,10 +123,11 @@ export interface JobDetail {
   supportsRealCancellation: boolean;
 }
 
-export function getJobDetail(jobId: string): JobDetail | undefined {
+export function getJobDetail(jobId: string, userId: string): JobDetail | undefined {
   const manager = jobManager();
   const job = manager.getJob(jobId);
   if (!job) return undefined;
+  if (!job.projectId || !listOwnedMovieIds(userId).has(job.projectId)) return undefined;
 
   const cancellationPolicy = new CancellationPolicy();
   const allJobs = manager.list();
@@ -203,11 +223,11 @@ export interface ProductionOverviewData {
   averageRenderDurationSeconds?: number;
 }
 
-/** "Movies in progress" / queue length come straight from RenderJobManager.list() — the one real queue. Per-movie scene totals reuse ProductionPlanner's already-computed ProductionSchedule (via MovieProducerFactory.buildMovieProductionPlan()), never recomputed. Average render duration reuses the real ledger's generationTimeMs. */
-export function getProductionOverview(): ProductionOverviewData {
+/** "Movies in progress" (scoped to userId's catalog) / queue length (global) come straight from RenderJobManager.list() — the one real queue. Per-movie scene totals reuse ProductionPlanner's already-computed ProductionSchedule (via MovieProducerFactory.buildMovieProductionPlan()), never recomputed. Average render duration reuses the real ledger's generationTimeMs. */
+export function getProductionOverview(userId: string): ProductionOverviewData {
   const manager = jobManager();
   const jobs = manager.list();
-  const projectIds = knownProjectIds(jobs);
+  const projectIds = knownProjectIds(jobs, userId);
 
   const moviesInProgress: MovieProgressEntry[] = projectIds
     .map((projectId): MovieProgressEntry | undefined => {
@@ -256,9 +276,9 @@ export interface QualityPanelData {
 
 const SCORE_PENALTY: Record<QualityIssue["severity"], number> = { ERROR: 15, WARNING: 5 };
 
-export function listQualityPanels(): QualityPanelData[] {
+export function listQualityPanels(userId: string): QualityPanelData[] {
   const jobs = jobManager().list();
-  const projectIds = knownProjectIds(jobs);
+  const projectIds = knownProjectIds(jobs, userId);
 
   return projectIds
     .map((projectId): QualityPanelData | undefined => {
