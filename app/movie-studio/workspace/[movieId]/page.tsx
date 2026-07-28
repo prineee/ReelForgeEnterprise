@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getSharedProductionContextRepository } from "@/services/infrastructure/MovieProductionFactory";
 import { getSharedRenderJobManager, getSharedAssetManager, buildDirectorPlan } from "@/services/infrastructure/MovieWorkspaceFactory";
@@ -19,6 +19,14 @@ import type { SceneStatus } from "@/components/storyboard/SceneStatusBadge";
  * WorkspaceShell.tsx's own docstring says it should. Every prior sprint's
  * components (movie-workspace/, storyboard/, timeline/, assets/,
  * render-dashboard/) were built and left unmounted; this is what mounts them.
+ *
+ * Ownership check (Sprint 16, Task 3): this route resolves a single movie
+ * directly by movieId from the URL, with no enumeration step — but it had
+ * no ownership check either, so any authenticated user could open any
+ * other user's workspace by URL. Verified against the same
+ * ProductionContext.userId field MovieCatalogService's enumeration already
+ * scopes by, so a movieId can't be used to bypass the catalog's ownership
+ * boundary.
  */
 export default async function MovieWorkspacePage({
   params,
@@ -30,8 +38,14 @@ export default async function MovieWorkspacePage({
   const { movieId } = await params;
   const { scene: selectedSceneId } = await searchParams;
 
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
   const context = getSharedProductionContextRepository().get(movieId);
-  if (!context?.movieBlueprint) {
+  if (!context?.movieBlueprint || context.userId !== user.id) {
     notFound();
   }
 
@@ -56,18 +70,11 @@ export default async function MovieWorkspacePage({
 
   const { movie, characters, environments, cameraPlans, emotionPlans, scenes } = context.movieBlueprint;
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  let credits = 0;
-  if (user) {
-    const { data: profile } = (await (supabase.from("users") as any)
-      .select("credits")
-      .eq("id", user.id)
-      .single()) as { data: { credits: number } | null };
-    credits = profile?.credits ?? 0;
-  }
+  const { data: profile } = (await (supabase.from("users") as any)
+    .select("credits")
+    .eq("id", user.id)
+    .single()) as { data: { credits: number } | null };
+  const credits = profile?.credits ?? 0;
 
   const activeVideoProvider =
     process.env.VIDEO_PROVIDER?.toUpperCase() === "LTX"
