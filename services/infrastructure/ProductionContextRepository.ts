@@ -40,6 +40,7 @@ export interface ProductionFailure {
  */
 export interface UploadedReferenceAsset {
   characterId: string;
+  characterName: string;
   assetId: string;
   url: string;
   prompt: string;

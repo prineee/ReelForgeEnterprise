@@ -518,7 +518,12 @@ export class MovieProductionService {
       const promptPlan = this.referenceImageGenerator.buildReferencePrompts(movie, pack);
 
       uploadedAssets = await Promise.all(
-        promptPlan.prompts.map((entry) => this.generateAndUploadReferenceAsset(entry))
+        promptPlan.prompts.map((entry) =>
+          this.generateAndUploadReferenceAsset(
+            entry,
+            movie.characters.find((character) => character.id === entry.characterId)?.name ?? "Unknown"
+          )
+        )
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -563,7 +568,8 @@ export class MovieProductionService {
    * default them.
    */
   private async generateAndUploadReferenceAsset(
-    entry: CharacterReferencePrompt
+    entry: CharacterReferencePrompt,
+    characterName: string
   ): Promise<UploadedReferenceAsset> {
     const startedAt = Date.now();
     const generatedImage = await this.imagenService.generateImage(entry.prompt);
@@ -572,6 +578,7 @@ export class MovieProductionService {
 
     return {
       characterId: entry.characterId,
+      characterName,
       assetId: uploadResult.assetId,
       url: uploadResult.url,
       prompt: entry.prompt,
@@ -586,6 +593,7 @@ export class MovieProductionService {
   private buildArtifactMetadata(asset: UploadedReferenceAsset): Record<string, string | number | boolean> {
     const metadata: Record<string, string | number | boolean> = {
       characterId: asset.characterId,
+      characterName: asset.characterName,
       prompt: asset.prompt,
       provider: asset.provider,
       generationTimeMs: asset.generationTimeMs,

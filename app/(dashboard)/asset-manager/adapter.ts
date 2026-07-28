@@ -102,6 +102,9 @@ export function adaptWorkflowToAssets(item: WorkflowListItem): LibraryAsset[] {
       const metadata = artifact.metadata ?? {}
       const sceneNumber = typeof metadata.sceneNumber === 'number' ? metadata.sceneNumber : null
       const title = typeof metadata.title === 'string' ? metadata.title : null
+      // Real for REFERENCE_IMAGE — MovieProductionService.buildArtifactMetadata()
+      // now threads the character's name through from the MovieBlueprint.
+      const characterName = typeof metadata.characterName === 'string' ? metadata.characterName : null
 
       // Real for REFERENCE_IMAGE — MovieProductionService.generateAndUploadReferenceAsset()
       // now captures these on every Imagen call (see buildArtifactMetadata()).
@@ -125,7 +128,7 @@ export function adaptWorkflowToAssets(item: WorkflowListItem): LibraryAsset[] {
         type,
         movieTitle,
         productionId: item.workflowId,
-        characterName: null,
+        characterName,
         sceneNumber,
         createdAt: item.updatedAt,
         resolution: typeof metadata.resolution === 'string' ? metadata.resolution : null,
