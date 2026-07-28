@@ -2,9 +2,10 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import {
-  PLANS,
+  PLAN_BY_KEY,
   getCommissionRate,
-} from "@/lib/payment/plans";
+  type PlanKey,
+} from "@/lib/plans";
 
 export async function POST(
   request: Request
@@ -32,9 +33,21 @@ export async function POST(
 
     const {
       orderID,
-      amount,
       plan,
     } = await request.json();
+
+    const planData = PLAN_BY_KEY[plan as PlanKey];
+    if (!planData) {
+      return NextResponse.json(
+        { error: "Invalid plan" },
+        { status: 400 }
+      );
+    }
+
+    // The charged amount is always derived from the plan's real price, never
+    // from client input — a client-supplied amount here would let a caller
+    // set their own price and their own affiliate commission payout.
+    const amount = planData.priceUSD;
 
     await payments.insert({
       user_id: user.id,
@@ -46,10 +59,7 @@ export async function POST(
       status: "paid",
     });
 
-    const credits =
-      PLANS[
-        plan as keyof typeof PLANS
-      ]?.credits ?? 0;
+    const credits = planData.credits;
 
     const {
       data: existingUser,
@@ -64,7 +74,7 @@ export async function POST(
           Number(
             existingUser?.credits || 0
           ) + credits,
-        plan,
+        plan: planData.dbPlan,
       })
       .eq("id", user.id);
 

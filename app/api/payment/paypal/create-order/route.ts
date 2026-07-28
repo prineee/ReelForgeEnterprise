@@ -33,7 +33,6 @@ export async function POST(
 
     const {
       orderID,
-      amount,
       plan,
     } = await request.json();
 
@@ -44,6 +43,11 @@ export async function POST(
         { status: 400 }
       );
     }
+
+    // The charged amount is always derived from the plan's real price, never
+    // from client input — a client-supplied amount here would let a caller
+    // set their own price and their own affiliate commission payout.
+    const amount = planData.priceUSD;
 
     await payments.insert({
       user_id: user.id,

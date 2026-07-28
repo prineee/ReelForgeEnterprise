@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import Razorpay from 'razorpay'
 import crypto from 'crypto'
-import { PLAN_BY_KEY, PLAN_CREDITS, type PlanKey } from '@/lib/plans'
+import { PLAN_BY_KEY, PLAN_CREDITS, getCommissionRate, type PlanKey } from '@/lib/plans'
 
 export async function POST(request: Request) {
   const supabase = await createClient()
@@ -102,21 +102,7 @@ try {
       .maybeSingle();
 
   if (referral?.affiliate_id) {
-    let rate = 30;
-
-    switch (String(planData.dbPlan)) {
-      case "starter":
-        rate = 60;
-        break;
-
-      case "pro":
-        rate = 40;
-        break;
-
-      case "enterprise":
-        rate = 50;
-        break;
-    }
+    const rate = getCommissionRate(planData.key);
 
     const commission =
       (Number(planData.priceINR) * rate) /

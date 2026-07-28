@@ -6,12 +6,10 @@ import {
 } from "@paypal/react-paypal-js";
 
 interface Props {
-  amount: string;
   plan: string;
 }
 
 export default function PayPalButton({
-  amount,
   plan,
 }: Props) {
   return (
@@ -34,7 +32,7 @@ export default function PayPalButton({
                   "application/json",
               },
               body: JSON.stringify({
-                amount,
+                plan,
               }),
             }
           );
@@ -55,7 +53,6 @@ export default function PayPalButton({
               },
               body: JSON.stringify({
                 orderID: data.orderID,
-                amount,
                 plan,
               }),
             }
