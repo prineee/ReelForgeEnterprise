@@ -10,6 +10,7 @@ import {
   Loader2,
   Chrome,
   Check,
+  Mail,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
@@ -191,6 +192,22 @@ const referralCode =
         </div>
 
         <div className="card p-8">
+          {success ? (
+            <div className="text-center py-4">
+              <div className="w-12 h-12 rounded-full bg-brand-900/40 flex items-center justify-center mx-auto mb-4">
+                <Mail className="w-6 h-6 text-brand-400" />
+              </div>
+              <h1 className="text-2xl font-bold mb-2">
+                Check your email
+              </h1>
+              <p className="text-gray-400 text-sm">
+                We sent a confirmation link to{' '}
+                <span className="text-white">{email}</span>. Click it to
+                verify your account, then sign in.
+              </p>
+            </div>
+          ) : (
+            <>
           <h1 className="text-2xl font-bold mb-1">
             Create your account
           </h1>
@@ -351,6 +368,8 @@ const referralCode =
             </a>
             .
           </p>
+            </>
+          )}
         </div>
 
         <p className="text-center text-gray-400 text-sm mt-6">
