@@ -50,16 +50,32 @@ function emptyBalance(userId: UserId): CreditBalance {
  * insufficient-funds check (it still runs normally against whatever
  * balance results). Configurable via BILLING_DEV_SEED_CREDITS; set it to 0
  * to disable seeding entirely and restore the original real-zero-balance
- * behavior. 500 is the default — enough to cover one full production's
- * five reservations (story/images/video/voice/rendering) at the current
- * placeholder BASE_RATES in CreditCalculator.ts with room for more than
- * one test run, not an arbitrarily large/unlimited number.
+ * behavior. 500 is the default outside production — enough to cover one
+ * full production's five reservations (story/images/video/voice/rendering)
+ * at the current placeholder BASE_RATES in CreditCalculator.ts with room
+ * for more than one test run, not an arbitrarily large/unlimited number.
+ *
+ * RC-2 (Credits Ledger): this seed was previously active in every
+ * environment, including production — any user this in-memory ledger had
+ * never seen (e.g. right after a deploy restarts the process) got a free
+ * 500-credit balance for Movie Studio's reservation check, regardless of
+ * their real `users.credits`. That's the acute, closeable part of a larger
+ * known gap: this ledger is not Supabase-backed, so Movie Studio's
+ * reserve/consume flow doesn't move real credits at all (see
+ * RC2_REPORT.md — fixing that fully means making CreditLedger's interface
+ * async throughout CreditManager/BillingEngine/WorkflowExecutor, which is
+ * an architecture change out of scope here). Gating the seed to non-production
+ * closes the free-credits exposure without touching that interface: a
+ * never-before-seen user in production now starts at a real 0, matching
+ * what an unseeded ledger already does when BILLING_DEV_SEED_CREDITS=0.
  */
 const DEV_SEED_CREDITS = (() => {
   const raw = process.env.BILLING_DEV_SEED_CREDITS
-  if (raw === undefined) return 500
-  const parsed = Number(raw)
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 500
+  if (raw !== undefined) {
+    const parsed = Number(raw)
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : 500
+  }
+  return process.env.NODE_ENV === 'production' ? 0 : 500
 })()
 
 /**
