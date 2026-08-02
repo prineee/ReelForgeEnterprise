@@ -251,7 +251,7 @@ export default function CaptionsPage() {
               <CardContent className="flex flex-col items-center py-14 gap-3">
                 <Loader2 className="w-9 h-9 text-brand-400 animate-spin" />
                 <p className="text-sm text-gray-400">GPT-4o is writing your caption…</p>
-                <p className="text-xs text-gray-600">Usually takes 5–10 seconds</p>
+                <p className="text-xs text-gray-400">Usually takes 5–10 seconds</p>
               </CardContent>
             </Card>
           )}

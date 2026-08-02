@@ -86,8 +86,6 @@ export default function AffiliatePayoutsPage() {
 
   onClick={() => {
 
-    console.log("BUTTON CLICKED");
-
     requestPayout();
 
   }}

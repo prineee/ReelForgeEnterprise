@@ -1,45 +1,52 @@
 "use client";
 
 import { useEffect } from "react";
+import { createClient } from "@/lib/supabase/client";
 
 export default function ReferralTracker() {
   useEffect(() => {
-    const ref = localStorage.getItem("affiliate_ref");
+    async function saveReferral() {
+      const referralCode =
+        localStorage.getItem("affiliate_ref");
 
-    if (!ref) return;
+      if (!referralCode) return;
 
-    const saveReferral = async () => {
-      try {
-        const res = await fetch(
-          "/api/affiliate/save-referral",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              referralCode: ref,
-            }),
-          }
+      const supabase = createClient();
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) return;
+
+      const res = await fetch(
+        "/api/affiliate/save-referral",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            referralCode,
+            userId: user.id,
+          }),
+        }
+      );
+
+      if (res.ok) {
+        console.log(
+          "Referral saved successfully."
         );
 
-        if (res.ok) {
-          console.log("Referral saved");
-          localStorage.removeItem(
-            "affiliate_ref"
-          );
-        } else {
-          console.error(
-            "Failed to save referral"
-          );
-        }
-      } catch (err) {
+        localStorage.removeItem(
+          "affiliate_ref"
+        );
+      } else {
         console.error(
-          "Referral tracking error:",
-          err
+          await res.text()
         );
       }
-    };
+    }
 
     saveReferral();
   }, []);

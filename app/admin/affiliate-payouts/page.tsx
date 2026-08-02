@@ -22,18 +22,8 @@ export default function AffiliatePayoutsPage() {
       "/api/admin/affiliate-payouts"
     );
 
-    console.log(
-      "STATUS",
-      res.status
-    );
-
     const data =
       await res.json();
-
-    console.log(
-      "PAYOUT DATA",
-      data
-    );
 
     setPayouts(data || []);
   } catch (err) {

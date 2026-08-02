@@ -3,9 +3,10 @@ import { createClient } from '@/lib/supabase/server'
 
 export async function POST(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const supabase = createClient()
+  const { id } = await params
+  const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -17,7 +18,7 @@ export async function POST(
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await ((supabase as any).rpc('admin_update_user', {
-    target_user_id: params.id,
+    target_user_id: id,
     new_credits: credits !== undefined ? credits : null,
     new_plan:    plan    !== undefined ? plan    : null,
     note:        note    !== undefined ? note    : null,

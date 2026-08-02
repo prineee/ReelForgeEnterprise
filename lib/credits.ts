@@ -17,7 +17,7 @@ export const CREDIT_COSTS = {
 export type CreditAction = keyof typeof CREDIT_COSTS
 
 export type CreditCheckResult =
-  | { ok: true;  userId: string }
+  | { ok: true;  userId: string; response?: never }
   | { ok: false; response: NextResponse }
 
 /**
@@ -30,7 +30,7 @@ export type CreditCheckResult =
  *   if (!check.ok) return check.response
  */
 export async function requireCredits(action: CreditAction): Promise<CreditCheckResult> {
-  const supabase = createClient()
+  const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
   if (!user) {

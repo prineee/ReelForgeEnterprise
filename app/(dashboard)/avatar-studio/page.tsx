@@ -297,7 +297,7 @@ export default function AvatarStudioPage() {
                   <>
                     <User className="w-12 h-12 text-gray-600 mx-auto mb-3" />
                     <p className="text-sm text-gray-400">Drag & drop a photo here or <span className="text-brand-400 underline">browse</span></p>
-                    <p className="text-xs text-gray-600 mt-1">JPG, PNG, WEBP up to 10MB</p>
+                    <p className="text-xs text-gray-400 mt-1">JPG, PNG, WEBP up to 10MB</p>
                   </>
                 )}
               </div>

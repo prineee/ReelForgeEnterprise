@@ -101,7 +101,7 @@ function VideoOutput({ result, loading, error, onRegenerate }: {
 // ── Pill selector ─────────────────────────────────────────────────────────────
 
 function Pills<T extends string | number>({ options, value, onChange }: {
-  options: readonly T[]; value: T; onChange: (v: T) => void
+  options: readonly T[]; value: T; onChange: React.Dispatch<React.SetStateAction<T>>
 }) {
   return (
     <div className="flex flex-wrap gap-1.5">

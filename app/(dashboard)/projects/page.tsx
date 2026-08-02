@@ -7,7 +7,7 @@ import ProjectsClient from './ProjectsClient'
 export const metadata = { title: 'Projects' }
 
 export default async function ProjectsPage() {
-  const supabase = createClient()
+  const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 

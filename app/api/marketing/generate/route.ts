@@ -69,7 +69,7 @@ export async function POST(req: Request) {
   const creditCheck = await requireCredits('marketing')
   if (!creditCheck.ok) return creditCheck.response
 
-  const supabase = createClient()
+  const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

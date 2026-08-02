@@ -9,8 +9,10 @@ import {
   Users, CreditCard, Menu, X, ChevronRight,
   Film, Tv, User, Library, BookMarked,
   Zap, Share2, Layers, Palette, Globe,
+  Settings, Boxes,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useEscapeKey } from '@/hooks/useEscapeKey'
 
 const NAV_ITEMS = [
   {
@@ -19,6 +21,7 @@ const NAV_ITEMS = [
       { label: 'Dashboard',        href: '/dashboard',         icon: LayoutDashboard },
       { label: 'Create Reel',      href: '/create-reel',       icon: Video           },
       { label: 'Movie Studio',     href: '/movie-studio',      icon: Film            },
+      { label: 'Movie Library',    href: '/movie-library',     icon: Library         },
       {
   label: 'Cartoon Studio',
   href: '/cartoon-studio',
@@ -32,6 +35,7 @@ const NAV_ITEMS = [
       { label: 'Cinema Studio',    href: '/cinema-studio',     icon: Palette         },
       { label: 'Marketing Studio', href: '/marketing-studio',  icon: Globe           },
       { label: 'Canvas',           href: '/canvas',            icon: Layers          },
+      { label: 'Asset Manager',    href: '/asset-manager',     icon: Boxes           },
     ],
   },
   {
@@ -48,6 +52,7 @@ const NAV_ITEMS = [
     items: [
       { label: 'Projects', href: '/projects', icon: Film       },
       { label: 'Billing',  href: '/billing',  icon: CreditCard },
+      { label: 'Settings', href: '/settings', icon: Settings   },
     ],
   },
 ]
@@ -69,12 +74,14 @@ export function DashboardShell({ children, credits }: Props) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const pathname = usePathname()
 
+  useEscapeKey(() => setSidebarOpen(false), sidebarOpen)
+
   function NavLinks({ onClickItem }: { onClickItem?: () => void }) {
     return (
       <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-4">
         {NAV_ITEMS.map(group => (
           <div key={group.section}>
-            <p className="text-[10px] font-semibold text-gray-600 uppercase tracking-wider px-2 mb-1">
+            <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider px-2 mb-1">
               {group.section}
             </p>
             <div className="space-y-0.5">
@@ -146,7 +153,7 @@ export function DashboardShell({ children, credits }: Props) {
       </div>
       <span className="font-bold text-lg text-white">ReelForge</span>
       {withClose && (
-        <button onClick={() => setSidebarOpen(false)} className="ml-auto text-gray-400 hover:text-white">
+        <button onClick={() => setSidebarOpen(false)} aria-label="Close menu" className="ml-auto text-gray-400 hover:text-white">
           <X className="w-5 h-5" />
         </button>
       )}
@@ -165,7 +172,7 @@ export function DashboardShell({ children, credits }: Props) {
 
       {/* ── Mobile sidebar overlay ── */}
       {sidebarOpen && (
-        <div className="lg:hidden fixed inset-0 z-50 flex">
+        <div className="lg:hidden fixed inset-0 z-50 flex" role="dialog" aria-modal="true" aria-label="Navigation menu">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setSidebarOpen(false)} />
           <aside className="relative w-72 max-w-[85vw] bg-surface-card border-r border-surface-border flex flex-col h-full z-10">
             <LogoBar withClose />
@@ -180,7 +187,7 @@ export function DashboardShell({ children, credits }: Props) {
 
         {/* Mobile top bar */}
         <header className="lg:hidden flex items-center gap-3 px-4 h-14 border-b border-surface-border bg-surface-card shrink-0">
-          <button onClick={() => setSidebarOpen(true)} className="text-gray-400 hover:text-white transition-colors">
+          <button onClick={() => setSidebarOpen(true)} aria-label="Open menu" className="text-gray-400 hover:text-white transition-colors">
             <Menu className="w-5 h-5" />
           </button>
           <div className="flex items-center gap-2">

@@ -307,7 +307,7 @@ export default function PublisherPage() {
                           }))}><X className="w-3 h-3" /></button>
                         </span>
                       ))}
-                      {data.hashtags.length === 0 && <span className="text-xs text-gray-600 italic">Click AI Generate to add hashtags</span>}
+                      {data.hashtags.length === 0 && <span className="text-xs text-gray-400 italic">Click AI Generate to add hashtags</span>}
                     </div>
                   </div>
                 </CardContent>
@@ -460,7 +460,7 @@ export default function PublisherPage() {
                   <div className="space-y-1.5">
                     {MANUAL_STEPS[p.id].map((step, i) => (
                       <div key={i} className="flex items-center gap-2 text-xs text-gray-500">
-                        <span className="w-4 h-4 rounded-full bg-surface border border-surface-border text-gray-600 text-xs flex items-center justify-center shrink-0">{i + 1}</span>
+                        <span className="w-4 h-4 rounded-full bg-surface border border-surface-border text-gray-400 text-xs flex items-center justify-center shrink-0">{i + 1}</span>
                         {step}
                       </div>
                     ))}

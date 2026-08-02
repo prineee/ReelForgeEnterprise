@@ -1,5 +1,13 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Native binary installer packages (dynamic, platform-resolved require()
+  // calls that webpack's static bundler can't follow — see
+  // services/gpu/backends/SyntheticTestPatternBackend.ts, now reachable
+  // from app/api routes via MovieProductionFactory -> ProviderRegistry ->
+  // LocalGPUProvider). Marking them external makes Next.js require() them
+  // natively at runtime instead of bundling them, which is what these
+  // packages already expect.
+  serverExternalPackages: ['@ffmpeg-installer/ffmpeg', '@ffprobe-installer/ffprobe'],
   images: {
     remotePatterns: [
       {
@@ -27,10 +35,6 @@ const nextConfig = {
         hostname: 'images.pexels.com',
       },
     ],
-  },
-
-  eslint: {
-    ignoreDuringBuilds: true,
   },
 }
 

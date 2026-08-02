@@ -1,83 +1,24 @@
 "use client";
 
-import {
-  PayPalButtons,
-  PayPalScriptProvider,
-} from "@paypal/react-paypal-js";
-
 interface Props {
-  amount: string;
   plan: string;
 }
 
-export default function PayPalButton({
-  amount,
-  plan,
-}: Props) {
+/**
+ * PayPal checkout is disabled server-side (Sprint 16, Task 5.6 — the old
+ * create-order/capture-order routes granted credits with no verification
+ * against PayPal's Orders API, a free-credits exploit). Both routes now
+ * return 503 unconditionally. Rendering the live PayPal SDK button here
+ * would let a user click through into a checkout flow that can never
+ * succeed; this notice replaces it until a real PayPal Orders API
+ * create+capture flow (PAYPAL_CLIENT_SECRET, server-side status
+ * verification) is implemented — see api/payment/paypal/create-order's
+ * header for exactly what remains.
+ */
+export default function PayPalButton({ plan: _plan }: Props) {
   return (
-    <PayPalScriptProvider
-      options={{
-        clientId:
-          process.env
-            .NEXT_PUBLIC_PAYPAL_CLIENT_ID || "",
-        currency: "USD",
-      }}
-    >
-      <PayPalButtons
-        createOrder={async () => {
-          const res = await fetch(
-            "/api/payment/paypal/create-order",
-            {
-              method: "POST",
-              headers: {
-                "Content-Type":
-                  "application/json",
-              },
-              body: JSON.stringify({
-                amount,
-              }),
-            }
-          );
-
-          const data =
-            await res.json();
-
-          return data.id;
-        }}
-        onApprove={async (data) => {
-          const res = await fetch(
-            "/api/payment/paypal/capture-order",
-            {
-              method: "POST",
-              headers: {
-                "Content-Type":
-                  "application/json",
-              },
-              body: JSON.stringify({
-                orderID: data.orderID,
-                amount,
-                plan,
-              }),
-            }
-          );
-
-          const result =
-            await res.json();
-
-          if (result.success) {
-            alert(
-              "Payment Successful!"
-            );
-
-            window.location.href =
-              "/dashboard";
-          } else {
-            alert(
-              "Payment failed."
-            );
-          }
-        }}
-      />
-    </PayPalScriptProvider>
+    <div className="w-full rounded-lg border border-surface-border bg-surface px-4 py-3 text-center text-sm text-gray-400">
+      PayPal is temporarily unavailable. Please use Stripe or Razorpay above.
+    </div>
   );
 }

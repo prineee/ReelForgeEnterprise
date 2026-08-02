@@ -2,8 +2,8 @@
 
 import { useState, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Loader2, CreditCard, Wallet, CheckCircle2, AlertCircle, Zap, Check, Flame } from 'lucide-react'
-import { PLANS, LIFETIME_DEAL, type Plan, type DbPlan } from '@/lib/plans'
+import { Loader2, CreditCard, Wallet, CheckCircle2, AlertCircle } from 'lucide-react'
+import { PLANS, type Plan, type DbPlan } from '@/lib/plans'
 
 declare global {
   interface Window {
@@ -83,9 +83,7 @@ export default function BillingClient({ currentPlan, userEmail }: Props) {
           amount:      order.amount,
           currency:    order.currency,
           name:        'AI ReelForge',
-          description: plan.key === 'Pro'
-            ? 'Pro Pro — one-time'
-            : `${order.planName} Plan`,
+          description: `${order.planName} Plan`,
           order_id: order.orderId,
           prefill:  { email: userEmail },
           theme:    { color: '#6366f1' },
@@ -146,10 +144,7 @@ export default function BillingClient({ currentPlan, userEmail }: Props) {
         rzp.open()
       })
 
-      const successMsg = plan.key === 'Pro'
-        ? 'Pro deal activated! You now have Pro access forever.'
-        : `Upgraded to ${plan.name}! Credits added to your account.`
-      setToast({ type: 'success', msg: successMsg })
+      setToast({ type: 'success', msg: `Upgraded to ${plan.name}! Credits added to your account.` })
       router.refresh()
     } catch (err) {
       if (err instanceof Error && err.message !== 'dismissed') {
@@ -211,10 +206,12 @@ export default function BillingClient({ currentPlan, userEmail }: Props) {
 
               <div className="mt-1 mb-4">
                 <div className="flex items-baseline gap-1">
-                  <span className="text-2xl font-extrabold">₹{plan.priceINR}</span>
-                  <span className="text-gray-500 text-xs">/mo</span>
+                  <span className="text-2xl font-extrabold">${plan.priceUSD}</span>
+                  <span className="text-gray-500 text-xs">{plan.billing === 'monthly' ? '/mo' : ' one-time'}</span>
                 </div>
-                <span className="text-xs text-gray-500">${plan.priceUSD} USD / month</span>
+                {plan.priceINR !== undefined && (
+                  <span className="text-xs text-gray-500">₹{plan.priceINR} via Razorpay</span>
+                )}
               </div>
 
               <ul className="space-y-1.5 mb-5 flex-1">
@@ -232,16 +229,18 @@ export default function BillingClient({ currentPlan, userEmail }: Props) {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  <button
-                    onClick={() => handleRazorpay(plan)}
-                    disabled={anyLoading}
-                    className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-medium bg-brand-600 hover:bg-brand-500 text-white transition-colors disabled:opacity-50"
-                  >
-                    {isRzpLoading
-                      ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      : <Wallet  className="w-3.5 h-3.5" />}
-                    {isRzpLoading ? 'Processing…' : `Pay ₹${plan.priceINR}`}
-                  </button>
+                  {plan.priceINR !== undefined && (
+                    <button
+                      onClick={() => handleRazorpay(plan)}
+                      disabled={anyLoading}
+                      className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-medium bg-brand-600 hover:bg-brand-500 text-white transition-colors disabled:opacity-50"
+                    >
+                      {isRzpLoading
+                        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        : <Wallet  className="w-3.5 h-3.5" />}
+                      {isRzpLoading ? 'Processing…' : `Pay ₹${plan.priceINR}`}
+                    </button>
+                  )}
 
                   <button
                     onClick={() => handleStripe(plan)}
@@ -260,96 +259,11 @@ export default function BillingClient({ currentPlan, userEmail }: Props) {
         })}
       </div>
 
-      <p className="text-xs text-gray-600 text-center">
+      <p className="text-xs text-gray-400 text-center">
         Indian users: pay in ₹ via Razorpay (UPI · Cards · Net banking)
         &nbsp;·&nbsp;
         International: pay in $ via Stripe
       </p>
-
-      {/* ── Pro Deal ── */}
-      <LifetimeDealCard
-        currentPlan={currentPlan}
-        loading={loading}
-        anyLoading={anyLoading}
-        onBuy={() => handleRazorpay(LIFETIME_DEAL)}
-      />
-    </div>
-  )
-}
-
-function LifetimeDealCard({
-  currentPlan,
-  loading,
-  anyLoading,
-  onBuy,
-}: {
-  currentPlan: DbPlan
-  loading:     string | null
-  anyLoading:  boolean
-  onBuy:       () => void
-}) {
-  const isProActive     = currentPlan === 'pro' || currentPlan === 'enterprise'
-  const isLifetimeLoading = loading === 'Pro-rzp'
-
-  return (
-    <div className="relative rounded-xl border-2 border-orange-600 bg-gradient-to-br from-orange-950/60 to-amber-950/40 p-5 overflow-hidden">
-      {/* Background glow */}
-      <div className="absolute -top-10 -right-10 w-40 h-40 bg-orange-500/10 rounded-full blur-3xl pointer-events-none" />
-
-      {/* Badge */}
-      <div className="absolute -top-2.5 left-5">
-        <span className="inline-flex items-center gap-1 bg-gradient-to-r from-orange-500 to-amber-500 text-white text-xs font-bold px-3 py-0.5 rounded-full">
-          <Flame className="w-3 h-3" /> ONE-TIME DEAL
-        </span>
-      </div>
-
-      <div className="mt-2 flex flex-col sm:flex-row sm:items-center gap-6">
-        {/* Left: pricing */}
-        <div className="shrink-0">
-          <div className="flex items-baseline gap-1.5 mb-0.5">
-            <span className="text-3xl font-extrabold text-white">₹2,999</span>
-            <span className="text-orange-300/70 text-sm line-through ml-1">₹5,988</span>
-          </div>
-          <p className="text-xs text-orange-300/80">one-time payment · no subscription</p>
-          <div className="flex items-center gap-1.5 mt-2">
-            <Zap className="w-3.5 h-3.5 text-orange-400" />
-            <span className="text-sm font-bold text-orange-200">Pro Pro</span>
-          </div>
-        </div>
-
-        {/* Divider */}
-        <div className="hidden sm:block w-px h-16 bg-orange-800/50" />
-
-        {/* Middle: features */}
-        <ul className="flex-1 grid grid-cols-2 gap-1.5">
-          {LIFETIME_DEAL.features.map(f => (
-            <li key={f} className="flex items-center gap-1.5 text-xs text-orange-100/80">
-              <Check className="w-3 h-3 text-orange-400 shrink-0" />
-              {f}
-            </li>
-          ))}
-        </ul>
-
-        {/* Right: CTA */}
-        <div className="shrink-0">
-          {isProActive ? (
-            <div className="flex items-center gap-2 bg-orange-950 border border-orange-800 text-orange-400 rounded-lg px-4 py-2.5 text-sm font-medium">
-              <Check className="w-4 h-4" /> Already on Pro
-            </div>
-          ) : (
-            <button
-              onClick={onBuy}
-              disabled={anyLoading}
-              className="flex items-center gap-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 text-white font-semibold px-5 py-2.5 rounded-lg text-sm transition-all disabled:opacity-50 whitespace-nowrap shadow-lg shadow-orange-900/40"
-            >
-              {isLifetimeLoading
-                ? <><Loader2 className="w-4 h-4 animate-spin" /> Processing…</>
-                : <><Wallet className="w-4 h-4" /> Get Pro — ₹2,999</>}
-            </button>
-          )}
-          <p className="text-xs text-orange-400/60 text-center mt-1.5">Razorpay · UPI / Cards</p>
-        </div>
-      </div>
     </div>
   )
 }

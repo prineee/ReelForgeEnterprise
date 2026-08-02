@@ -1,6 +1,11 @@
 "use client";
 
 import PayPalButton from "@/components/payment/PayPalButton";
+import { PLAN_BY_KEY } from "@/lib/plans";
+
+const starter = PLAN_BY_KEY.starter;
+const pro = PLAN_BY_KEY.pro;
+const agency = PLAN_BY_KEY.agency;
 
 export default function InternationalPricing() {
   return (
@@ -14,15 +19,15 @@ export default function InternationalPricing() {
         {/* Starter */}
         <div className="rounded-3xl border p-8 bg-zinc-900">
           <h3 className="text-2xl font-bold">
-            Starter
+            {starter.name}
           </h3>
 
           <div className="mt-6 text-5xl font-bold">
-            $6
+            ${starter.priceUSD}
           </div>
 
           <ul className="mt-8 space-y-3 text-gray-300">
-            <li>✓ 100 Credits</li>
+            <li>✓ {starter.credits} Credits</li>
             <li>✓ AI Video Generator</li>
             <li>✓ Script Generator</li>
             <li>✓ Thumbnail Generator</li>
@@ -30,8 +35,7 @@ export default function InternationalPricing() {
 
           <div className="mt-8">
             <PayPalButton
-              amount="6"
-              plan="starter"
+              plan={starter.key}
             />
           </div>
         </div>
@@ -43,15 +47,15 @@ export default function InternationalPricing() {
           </div>
 
           <h3 className="text-2xl font-bold mt-2">
-            Pro
+            {pro.name}
           </h3>
 
           <div className="mt-6 text-5xl font-bold">
-            $18
+            ${pro.priceUSD}
           </div>
 
           <ul className="mt-8 space-y-3 text-gray-300">
-            <li>✓ 500 Credits</li>
+            <li>✓ {pro.credits} Credits</li>
             <li>✓ AI Movie Studio</li>
             <li>✓ Cartoon Studio</li>
             <li>✓ Marketing Studio</li>
@@ -59,8 +63,7 @@ export default function InternationalPricing() {
 
           <div className="mt-8">
             <PayPalButton
-              amount="18"
-              plan="pro"
+              plan={pro.key}
             />
           </div>
         </div>
@@ -68,15 +71,15 @@ export default function InternationalPricing() {
         {/* Agency */}
         <div className="rounded-3xl border p-8 bg-zinc-900">
           <h3 className="text-2xl font-bold">
-            Agency
+            {agency.name}
           </h3>
 
           <div className="mt-6 text-5xl font-bold">
-            $60
+            ${agency.priceUSD}
           </div>
 
           <ul className="mt-8 space-y-3 text-gray-300">
-            <li>✓ Unlimited Projects</li>
+            <li>✓ {agency.credits} Credits</li>
             <li>✓ Team Access</li>
             <li>✓ Priority Support</li>
             <li>✓ Commercial Rights</li>
@@ -84,8 +87,7 @@ export default function InternationalPricing() {
 
           <div className="mt-8">
             <PayPalButton
-              amount="60"
-              plan="agency"
+              plan={agency.key}
             />
           </div>
         </div>

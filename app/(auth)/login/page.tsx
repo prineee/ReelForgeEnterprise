@@ -65,7 +65,7 @@ export default function LoginPage() {
           <p className="text-gray-400 text-sm mb-8">Sign in to your account to continue.</p>
 
           {error && (
-            <div className="bg-red-950/50 border border-red-800 text-red-400 text-sm rounded-lg p-3 mb-6">
+            <div role="alert" className="bg-red-950/50 border border-red-800 text-red-400 text-sm rounded-lg p-3 mb-6">
               {error}
             </div>
           )}
@@ -92,8 +92,9 @@ export default function LoginPage() {
 
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label className="label">Email</label>
+              <label className="label" htmlFor="login-email">Email</label>
               <input
+                id="login-email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -105,13 +106,14 @@ export default function LoginPage() {
 
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="label mb-0">Password</label>
+                <label className="label mb-0" htmlFor="login-password">Password</label>
                 <Link href="/forgot-password" className="text-xs text-brand-400 hover:text-brand-300">
                   Forgot password?
                 </Link>
               </div>
               <div className="relative">
                 <input
+                  id="login-password"
                   type={showPass ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}

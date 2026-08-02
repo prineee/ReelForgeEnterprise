@@ -22,13 +22,18 @@ const ORPHEUS_VOICES: Voice[] = [
 ]
 
 export async function GET() {
-  const supabase = createClient()
+  const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) {
     console.log('[voices] Unauthorized request')
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  console.log('[voices] Returning', ORPHEUS_VOICES.length, 'Orpheus v1 voices')
-  return NextResponse.json({ voices: ORPHEUS_VOICES })
+  try {
+    console.log('[voices] Returning', ORPHEUS_VOICES.length, 'Orpheus v1 voices')
+    return NextResponse.json({ voices: ORPHEUS_VOICES })
+  } catch (error) {
+    console.error('[reel/voices] GET failed', error)
+    return NextResponse.json({ error: 'Failed to load voices.' }, { status: 500 })
+  }
 }

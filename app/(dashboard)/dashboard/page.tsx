@@ -10,7 +10,7 @@ import { formatDate } from '@/lib/utils'
 export const metadata = { title: 'Dashboard' }
 
 export default async function DashboardPage() {
-  const supabase = createClient()
+  const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
@@ -120,7 +120,6 @@ export default async function DashboardPage() {
               label: 'AI Movie Generator',
               desc: 'Generate cinematic scripts with scenes, camera angles, and visual prompts',
               cta: 'Create Movie',
-              badge: 'Coming Soon',
             },
             {
               href: '/series-studio',
@@ -147,9 +146,6 @@ export default async function DashboardPage() {
                   <div className={`w-11 h-11 rounded-xl border flex items-center justify-center ${tool.iconBg}`}>
                     <tool.icon className={`w-5 h-5 ${tool.iconColor}`} />
                   </div>
-                  {'badge' in tool && tool.badge && (
-                    <Badge variant="info" className="text-xs">{tool.badge}</Badge>
-                  )}
                 </div>
                 <div className="flex-1">
                   <p className="font-semibold text-sm mb-1">{tool.label}</p>

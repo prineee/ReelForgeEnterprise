@@ -6,7 +6,7 @@ const MIN_PAYOUT = 5;
 
 export async function POST() {
   try {
-    const supabase = createClient();
+    const supabase = await createClient();
 const admin = createAdminClient();
 
     const {
@@ -87,11 +87,6 @@ const affiliateId =
 
     const available =
       earnings - alreadyPaid;
-      console.log("Affiliate ID:", affiliateId);
-console.log("Sales:", sales);
-console.log("Payouts:", payouts);
-console.log("Earnings:", earnings);
-console.log("Available:", available);
 
     if (available < MIN_PAYOUT) {
       return NextResponse.json(

@@ -1,61 +1,17 @@
 import { MarketingSection } from "@/components/shared";
 import { SectionTitle, PricingCard } from "@/components/ui";
+import { PLANS as CANONICAL_PLANS } from "@/lib/plans";
 
-const PLANS = [
-  {
-    name: "Starter",
-    price: "$6",
-    period: "/mo",
-    description: "For solo creators getting started.",
-    features: ["100 credits / mo", "1080p exports", "All content tools", "Email support"],
-    href: "/register?plan=starter",
-  },
-  {
-    name: "Pro",
-    price: "$18",
-    period: "/mo",
-    description: "For serious creators scaling output.",
-    features: [
-      "500 credits / mo",
-      "4K exports",
-      "All studios unlocked",
-      "Priority support",
-      "Affiliate program",
-    ],
-    href: "/register?plan=pro",
-    highlighted: true,
-    badge: "Most Popular",
-  },
-  {
-    name: "Agency",
-    price: "$60",
-    period: "/mo",
-    description: "For teams managing many clients.",
-    features: [
-      "2,000 credits / mo",
-      "4K exports",
-      "API access",
-      "Dedicated manager",
-      "Custom branding",
-    ],
-    href: "/register?plan=agency",
-  },
-  {
-    name: "VIP",
-    price: "$199",
-    period: "/mo",
-    description: "Maximum scale, white-glove service.",
-    features: [
-      "10,000 credits / mo",
-      "Early access features",
-      "White-label exports",
-      "1:1 onboarding",
-      "Priority rendering",
-    ],
-    href: "/register?plan=vip",
-    badge: "Best Value",
-  },
-];
+const PLANS = CANONICAL_PLANS.map((plan) => ({
+  name: plan.name,
+  price: `$${plan.priceUSD}`,
+  period: plan.billing === "monthly" ? "/mo" : " one-time",
+  description: plan.tagline,
+  features: plan.features,
+  href: `/register?plan=${plan.key}`,
+  highlighted: plan.highlight,
+  badge: plan.badge,
+}));
 
 /** Pricing preview — links into the signup funnel (no purchase logic here). */
 export function PricingPreview() {

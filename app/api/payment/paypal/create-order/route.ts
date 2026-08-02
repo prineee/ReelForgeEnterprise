@@ -1,139 +1,39 @@
 import { NextResponse } from "next/server";
-import { PLANS } from "@/lib/payment/plans";
+import { createClient } from "@/lib/supabase/server";
+import { PLAN_BY_KEY, type PlanKey } from "@/lib/plans";
 
-async function getAccessToken() {
-  const clientId = process.env.PAYPAL_CLIENT_ID;
-  const clientSecret =
-    process.env.PAYPAL_CLIENT_SECRET;
-
-  if (!clientId || !clientSecret) {
-    throw new Error(
-      "PayPal credentials are missing"
-    );
+/**
+ * PayPal checkout is disabled server-side (Sprint 16, Task 5): this route
+ * used to insert a `payments` row and credit the account immediately, with
+ * no call to PayPal's Orders API to verify a payment had actually
+ * happened — anyone could hit capture-order directly with a fabricated
+ * orderID and get free credits. A real fix means implementing PayPal's
+ * server-side Orders API create+capture flow (PAYPAL_CLIENT_SECRET,
+ * verifying `status === "COMPLETED"` before crediting), which doesn't
+ * exist anywhere in this codebase yet (see also lib/plans.ts's Sprint 16
+ * Task 2 pricing-unification notes, which already flagged PayPal
+ * integration as incomplete). Until that's built, this route no longer
+ * grants anything — it just validates the plan and reports the feature as
+ * unavailable, closing the exploit without pretending to process a real
+ * payment.
+ */
+export async function POST(request: Request) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const auth = Buffer.from(
-    `${clientId}:${clientSecret}`
-  ).toString("base64");
+  const { plan } = await request.json().catch(() => ({ plan: undefined }));
+  const planData = PLAN_BY_KEY[plan as PlanKey];
+  if (!planData) {
+    return NextResponse.json({ error: "Invalid plan" }, { status: 400 });
+  }
 
-  const response = await fetch(
-    "https://api-m.sandbox.paypal.com/v1/oauth2/token",
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Basic ${auth}`,
-        "Content-Type":
-          "application/x-www-form-urlencoded",
-      },
-      body: "grant_type=client_credentials",
-    }
+  return NextResponse.json(
+    { error: "PayPal payments are temporarily unavailable. Please use Stripe or Razorpay." },
+    { status: 503 }
   );
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(
-      data.error_description ||
-        "Failed to get PayPal token"
-    );
-  }
-
-  return data.access_token;
-}
-
-export async function POST(
-  request: Request
-) {
-  try {
-    const { plan } =
-      await request.json();
-
-    const planData =
-      PLANS[
-        plan as keyof typeof PLANS
-      ];
-
-    if (!planData) {
-      return NextResponse.json(
-        {
-          error: "Invalid plan",
-        },
-        {
-          status: 400,
-        }
-      );
-    }
-
-    const accessToken =
-      await getAccessToken();
-
-    const response = await fetch(
-      "https://api-m.sandbox.paypal.com/v2/checkout/orders",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type":
-            "application/json",
-        },
-        body: JSON.stringify({
-          intent: "CAPTURE",
-          purchase_units: [
-            {
-              amount: {
-                currency_code: "USD",
-                value:
-                  planData.usd.toFixed(2),
-              },
-            },
-          ],
-        }),
-      }
-    );
-
-    const order =
-      await response.json();
-
-    if (!response.ok) {
-      console.error(order);
-
-      return NextResponse.json(
-        {
-          error:
-            "Failed to create PayPal order",
-        },
-        {
-          status: 500,
-        }
-      );
-    }
-
-    const approvalLink =
-      order.links?.find(
-        (link: any) =>
-          link.rel === "approve"
-      );
-
-    return NextResponse.json({
-      orderID: order.id,
-      approvalUrl:
-        approvalLink?.href,
-    });
-  } catch (err: any) {
-    console.error(
-      "PAYPAL CREATE ORDER ERROR:",
-      err
-    );
-
-    return NextResponse.json(
-      {
-        error:
-          err.message ||
-          "Failed to create order",
-      },
-      {
-        status: 500,
-      }
-    );
-  }
 }

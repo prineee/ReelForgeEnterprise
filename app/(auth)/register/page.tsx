@@ -1,6 +1,6 @@
 'use client'
 import { useSearchParams } from "next/navigation";
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
@@ -10,10 +10,11 @@ import {
   Loader2,
   Chrome,
   Check,
+  Mail,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
-export default function RegisterPage() {
+function RegisterForm() {
   async function handleGoogleLogin() {
   setGoogleLoading(true);
   setError("");
@@ -191,6 +192,22 @@ const referralCode =
         </div>
 
         <div className="card p-8">
+          {success ? (
+            <div className="text-center py-4">
+              <div className="w-12 h-12 rounded-full bg-brand-900/40 flex items-center justify-center mx-auto mb-4">
+                <Mail className="w-6 h-6 text-brand-400" />
+              </div>
+              <h1 className="text-2xl font-bold mb-2">
+                Check your email
+              </h1>
+              <p className="text-gray-400 text-sm">
+                We sent a confirmation link to{' '}
+                <span className="text-white">{email}</span>. Click it to
+                verify your account, then sign in.
+              </p>
+            </div>
+          ) : (
+            <>
           <h1 className="text-2xl font-bold mb-1">
             Create your account
           </h1>
@@ -201,7 +218,7 @@ const referralCode =
           </p>
 
           {error && (
-            <div className="bg-red-950/50 border border-red-800 text-red-400 text-sm rounded-lg p-3 mb-6">
+            <div role="alert" className="bg-red-950/50 border border-red-800 text-red-400 text-sm rounded-lg p-3 mb-6">
               {error}
             </div>
           )}
@@ -239,11 +256,12 @@ const referralCode =
             className="space-y-4"
           >
             <div>
-              <label className="label">
+              <label className="label" htmlFor="register-name">
                 Full Name
               </label>
 
               <input
+                id="register-name"
                 type="text"
                 value={name}
                 onChange={(e) =>
@@ -258,11 +276,12 @@ const referralCode =
             </div>
 
             <div>
-              <label className="label">
+              <label className="label" htmlFor="register-email">
                 Email
               </label>
 
               <input
+                id="register-email"
                 type="email"
                 value={email}
                 onChange={(e) =>
@@ -277,12 +296,13 @@ const referralCode =
             </div>
 
             <div>
-              <label className="label">
+              <label className="label" htmlFor="register-password">
                 Password
               </label>
 
               <div className="relative">
                 <input
+                  id="register-password"
                   type={
                     showPass
                       ? 'text'
@@ -348,6 +368,8 @@ const referralCode =
             </a>
             .
           </p>
+            </>
+          )}
         </div>
 
         <p className="text-center text-gray-400 text-sm mt-6">
@@ -361,5 +383,13 @@ const referralCode =
         </p>
       </div>
     </div>
+  )
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense fallback={null}>
+      <RegisterForm />
+    </Suspense>
   )
 }

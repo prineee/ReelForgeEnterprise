@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const {
     data: { session },
@@ -33,13 +33,8 @@ export async function GET(request: NextRequest) {
 
   const refCode =
     request.cookies.get("ref_code")?.value;
-    console.log(
-  "ALL COOKIES:",
-  request.cookies.getAll()
-);
 
-  if (refCode) {console.log("REF CODE:", refCode);
-console.log("USER:", session.user.id);
+  if (refCode) {
     try {
       const admin = createAdminClient();
 
@@ -48,7 +43,7 @@ console.log("USER:", session.user.id);
           .from("affiliates") as any)
           .select("id")
           .eq("referral_code", refCode)
-          .maybesingle();
+          .maybeSingle();
 
       if (affiliate) {
         const { data: existing } =
@@ -59,7 +54,7 @@ console.log("USER:", session.user.id);
               "user_id",
               session.user.id
             )
-            .maybesingle();
+            .maybeSingle();
 
         if (!existing) {
           await (admin

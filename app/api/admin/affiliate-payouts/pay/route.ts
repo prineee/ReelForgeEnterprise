@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireAdmin } from "@/lib/admin";
 
 export async function POST(
   req: NextRequest
 ) {
+  const check = await requireAdmin();
+  if (!check.ok) return check.response;
+
   try {
     const { payoutId } =
       await req.json();

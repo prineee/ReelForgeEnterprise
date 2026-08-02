@@ -93,8 +93,9 @@ export default function SettingsPage() {
 
               <div className="border-t border-surface-border pt-4 space-y-4">
                 <div>
-                  <label className="label">Full Name</label>
+                  <label className="label" htmlFor="settings-full-name">Full Name</label>
                   <input
+                    id="settings-full-name"
                     className="input"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
@@ -102,8 +103,9 @@ export default function SettingsPage() {
                   />
                 </div>
                 <div>
-                  <label className="label">Email Address</label>
+                  <label className="label" htmlFor="settings-email">Email Address</label>
                   <input
+                    id="settings-email"
                     className="input opacity-60 cursor-not-allowed"
                     value={email}
                     readOnly
@@ -181,16 +183,16 @@ export default function SettingsPage() {
             <CardHeader><CardTitle>Change Password</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <label className="label">Current Password</label>
-                <input type="password" className="input" placeholder="••••••••" />
+                <label className="label" htmlFor="settings-current-password">Current Password</label>
+                <input id="settings-current-password" type="password" className="input" placeholder="••••••••" />
               </div>
               <div>
-                <label className="label">New Password</label>
-                <input type="password" className="input" placeholder="Min. 8 characters" />
+                <label className="label" htmlFor="settings-new-password">New Password</label>
+                <input id="settings-new-password" type="password" className="input" placeholder="Min. 8 characters" />
               </div>
               <div>
-                <label className="label">Confirm New Password</label>
-                <input type="password" className="input" placeholder="Repeat new password" />
+                <label className="label" htmlFor="settings-confirm-new-password">Confirm New Password</label>
+                <input id="settings-confirm-new-password" type="password" className="input" placeholder="Repeat new password" />
               </div>
               <Button>Update Password</Button>
             </CardContent>

@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireAdmin } from "@/lib/admin";
 
 export async function GET() {
+  const check = await requireAdmin();
+  if (!check.ok) return check.response;
+
   try {
     const admin = createAdminClient();
 
@@ -14,31 +18,26 @@ export async function GET() {
           user_id
         `);
 
-    const leaderboard = await Promise.all(
-      (affiliates || []).map(async (a: any) => {
-        const { data: sales } =
-          await admin
+    const affiliateIds = (affiliates || []).map((a: any) => a.id);
+
+    const { data: allSales } =
+      affiliateIds.length > 0
+        ? await admin
             .from("affiliate_sales")
-            .select("commission_amount")
-            .eq("affiliate_id", a.id);
+            .select("affiliate_id, commission_amount")
+            .in("affiliate_id", affiliateIds)
+        : { data: [] };
 
-        const earnings =
-          (sales || []).reduce(
-            (sum: number, s: any) =>
-              sum +
-              Number(
-                s.commission_amount || 0
-              ),
-            0
-          );
+    const earningsByAffiliateId = new Map<string, number>();
+    for (const s of allSales || []) {
+      const current = earningsByAffiliateId.get((s as any).affiliate_id) ?? 0;
+      earningsByAffiliateId.set((s as any).affiliate_id, current + Number((s as any).commission_amount || 0));
+    }
 
-        return {
-          referral_code:
-            a.referral_code,
-          earnings,
-        };
-      })
-    );
+    const leaderboard = (affiliates || []).map((a: any) => ({
+      referral_code: a.referral_code,
+      earnings: earningsByAffiliateId.get(a.id) ?? 0,
+    }));
 
     leaderboard.sort(
       (a, b) =>

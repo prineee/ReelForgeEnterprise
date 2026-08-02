@@ -408,7 +408,7 @@ export default function ThumbnailPage() {
             <CardContent className="flex flex-col items-center py-12 text-center">
               <ImageIcon className="w-10 h-10 text-gray-600 mb-3" />
               <p className="text-sm text-gray-400 mb-1">No thumbnails yet</p>
-              <p className="text-xs text-gray-600">Generate your first thumbnail above — it will appear here.</p>
+              <p className="text-xs text-gray-400">Generate your first thumbnail above — it will appear here.</p>
             </CardContent>
           </Card>
         ) : (
@@ -478,7 +478,7 @@ function ThumbnailCard({
           <Badge className={`text-xs ${styleColor}`} variant="default">
             {thumb.style}
           </Badge>
-          <span className="text-xs text-gray-600">{formatDate(thumb.created_at)}</span>
+          <span className="text-xs text-gray-400">{formatDate(thumb.created_at)}</span>
         </div>
       </div>
     </div>

@@ -1,26 +1,37 @@
 import { NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function POST(
   request: Request
 ) {
   try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const admin =
       createAdminClient();
 
     const {
       referralCode,
-      userId,
     } = await request.json();
+    // The referred user is always the caller's own session — never
+    // trusted from the request body, which would otherwise let anyone
+    // fabricate referral/commission records for an arbitrary user id.
+    const userId = user.id;
 
     if (
-      !referralCode ||
-      !userId
+      !referralCode
     ) {
       return NextResponse.json(
         {
           error:
-            "Referral code and user id required",
+            "Referral code required",
         },
         {
           status: 400,

@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { requireCredits } from '@/lib/credits'
-import Groq from 'groq-sdk'
+import { MovieDirector } from "@/services/movie/director";
+import { ScreenplayBuilder } from "@/services/movie/screenplayBuilder";
 
 const GENRE_STYLES: Record<string, string> = {
   Action:      'fast cuts, high energy, explosion visuals, hero moments',
@@ -46,128 +47,83 @@ interface ScreenplayResult {
 }
 
 export async function POST(req: Request) {
-  const creditCheck = await requireCredits('movie_script')
-  if (!creditCheck.ok) return creditCheck.response
+ const creditCheck = await requireCredits("movie_script");
 
-  const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const { title, genre, plot, duration_minutes, style, characters } = await req.json() as {
-    title?: string
-    genre?: string
-    plot?: string
-    duration_minutes?: number
-    style?: string
-    characters?: CharacterInput[]
-  }
-
-  if (!title?.trim() || !plot?.trim())
-    return NextResponse.json({ error: 'title and plot required' }, { status: 400 })
-
-  const groqApiKey = process.env.GROQ_API_KEY
-  if (!groqApiKey) return NextResponse.json({ error: 'Groq API key not configured' }, { status: 500 })
-
-  const groq       = new Groq({ apiKey: groqApiKey })
-  const durMins    = Number(duration_minutes) || 3
-  const scenesCount = Math.max(5, Math.round(durMins * 4))
-  const styleGuide  = GENRE_STYLES[genre ?? ''] ?? 'cinematic, professional'
-
-  const characterContext = characters?.length
-    ? `Characters: ${characters.map(c =>
-        `${c.name} (${c.age ?? ''} ${c.gender ?? ''}) — ${c.appearance ?? ''} — personality: ${c.personality ?? ''}`
-      ).join('; ')}`
-    : ''
-
-  const prompt = `You are a Hollywood screenplay writer and AI film director.
-
-Title: "${title}"
-Genre: ${genre ?? 'Drama'}
-Style: ${style ?? 'Cinematic Realistic'}
-Duration: ${durMins} minutes
-${characterContext}
-Plot: ${plot}
-
-Write a complete cinematic screenplay with exactly ${scenesCount} scenes.
-
-For each scene provide:
-- scene_number (1 to ${scenesCount})
-- title (short scene title)
-- location (specific place, time of day)
-- characters_present (array of character names in this scene)
-- camera_angle (choose best from: ${CAMERA_ANGLES.join(', ')})
-- voiceover (narration or dialogue spoken aloud, 2-4 sentences)
-- visual_prompt (detailed AI video generation prompt describing exactly what appears on screen — include lighting, mood, colors, actions, ${styleGuide})
-- duration_seconds (5 to 15)
-
-Rules:
-- visual_prompt must be detailed enough for an AI video model (50+ words)
-- Maintain character appearance consistency across all scenes
-- Build narrative arc: setup → conflict → climax → resolution
-- Each scene must flow naturally into the next
-
-Respond ONLY with valid JSON:
-{
-  "title": "movie title",
-  "logline": "one sentence summary",
-  "scenes": [
-    {
-      "scene_number": 1,
-      "title": "scene title",
-      "location": "Interior - Coffee Shop - Day",
-      "characters_present": ["name1"],
-      "camera_angle": "Medium Shot",
-      "voiceover": "spoken words",
-      "visual_prompt": "detailed visual description for AI video generation",
-      "duration_seconds": 8
-    }
-  ]
-}`
+if (creditCheck.ok === false) {
+  return creditCheck.response;
+}
 
   try {
-    const completion = await groq.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
-      messages: [
-        { role: 'system', content: 'You are a Hollywood screenplay writer. Always respond with valid JSON only.' },
-        { role: 'user', content: prompt },
-      ],
-      temperature: 0.8,
-      max_tokens: 4000,
-      response_format: { type: 'json_object' },
-    })
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const raw        = completion.choices[0]?.message?.content ?? ''
-    const screenplay = JSON.parse(raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')) as ScreenplayResult
+    const { title, genre, plot, duration_minutes, style, characters } = await req.json() as {
+      title?: string
+      genre?: string
+      plot?: string
+      duration_minutes?: number
+      style?: string
+      characters?: CharacterInput[]
+    }
+    const durMins = Number(duration_minutes) || 3;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: movie, error } = await (supabase.from('movies') as any)
-      .insert({ user_id: user.id, title, genre, style, duration_minutes: durMins, plot, screenplay, status: 'draft' })
-      .select()
-      .single()
+    if (!title?.trim() || !plot?.trim())
+      return NextResponse.json({ error: 'title and plot required' }, { status: 400 })
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    if (screenplay.scenes?.length) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (supabase.from('movie_scenes') as any).insert(
-        screenplay.scenes.map((s: SceneInput) => ({
-          movie_id:         movie.id,
-          user_id:          user.id,
-          scene_number:     s.scene_number,
-          title:            s.title,
-          voiceover:        s.voiceover,
-          visual_prompt:    s.visual_prompt,
-          camera_angle:     s.camera_angle,
-          characters:       s.characters_present,
-          location:         s.location,
-          duration_seconds: s.duration_seconds ?? 8,
-        }))
-      )
+    const result =
+  await MovieDirector.generate({
+    title,
+    genre: genre ?? "Drama",
+    plot,
+    duration: durMins,
+    style: style ?? "Cinematic Realistic",
+    characters: characters ?? [],
+  });
+
+    if (!result.success) {
+      return NextResponse.json(
+        {
+          error: result.error,
+        },
+        {
+          status: 500,
+        }
+      );
     }
 
-    return NextResponse.json({ movie, screenplay })
+    const screenplay =
+  ScreenplayBuilder.build(result.data);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: movie, error } = await (supabase.from('movies') as any)
+        .insert({ user_id: user.id, title, genre, style, duration_minutes: durMins, plot, screenplay, status: 'draft' })
+        .select()
+        .single()
+
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+      if (screenplay.scenes?.length) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (supabase.from('movie_scenes') as any).insert(
+          screenplay.scenes.map((s: SceneInput) => ({
+            movie_id:         movie.id,
+            user_id:          user.id,
+            scene_number:     s.scene_number,
+            title:            s.title,
+            voiceover:        s.voiceover,
+            visual_prompt:    s.visual_prompt,
+            camera_angle:     s.camera_angle,
+            characters:       s.characters_present,
+            location:         s.location,
+            duration_seconds: s.duration_seconds ?? 8,
+          }))
+        )
+      }
+
+      return NextResponse.json({ movie, screenplay })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Script generation failed'
-    return NextResponse.json({ error: msg }, { status: 500 })
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

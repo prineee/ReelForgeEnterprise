@@ -4,6 +4,7 @@ import { useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { X, Zap, Check, Loader2, CreditCard, Wallet } from 'lucide-react'
 import { PLANS, type Plan } from '@/lib/plans'
+import { useEscapeKey } from '@/hooks/useEscapeKey'
 
 interface Props {
   isOpen: boolean
@@ -105,10 +106,12 @@ export default function UpgradeModal({ isOpen, onClose, reason, creditsRemaining
     }
   }, [])
 
+  useEscapeKey(onClose, isOpen)
+
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="upgrade-modal-title">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
 
@@ -121,7 +124,7 @@ export default function UpgradeModal({ isOpen, onClose, reason, creditsRemaining
               <Zap className="w-5 h-5 text-brand-400" />
             </div>
             <div>
-              <h2 className="font-bold text-lg">Upgrade Your Plan</h2>
+              <h2 id="upgrade-modal-title" className="font-bold text-lg">Upgrade Your Plan</h2>
               {reason && <p className="text-sm text-gray-400 mt-0.5">{reason}</p>}
               {typeof creditsRemaining === 'number' && (
                 <p className="text-xs text-amber-400 mt-0.5">
@@ -132,6 +135,7 @@ export default function UpgradeModal({ isOpen, onClose, reason, creditsRemaining
           </div>
           <button
             onClick={onClose}
+            aria-label="Close"
             className="text-gray-500 hover:text-white transition-colors p-1"
           >
             <X className="w-5 h-5" />
@@ -139,7 +143,7 @@ export default function UpgradeModal({ isOpen, onClose, reason, creditsRemaining
         </div>
 
         {/* Plans */}
-        <div className="p-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {PLANS.map(plan => {
             const isRzpLoading    = loading === `${plan.key}-rzp`
             const isStripeLoading = loading === `${plan.key}-stripe`
@@ -162,9 +166,12 @@ export default function UpgradeModal({ isOpen, onClose, reason, creditsRemaining
 
                 <p className="font-semibold text-base">{plan.name}</p>
 
-                <div className="flex items-baseline gap-1 mt-1 mb-4">
-                  <span className="text-xl font-extrabold">₹{plan.priceINR}</span>
-                  <span className="text-gray-500 text-xs">/ ${plan.priceUSD} · /mo</span>
+                                <div className="flex items-baseline gap-1 mt-1 mb-4">
+                  <span className="text-xl font-extrabold">${plan.priceUSD}</span>
+                  <span className="text-gray-500 text-xs">
+                    {plan.billing === 'monthly' ? '/mo' : 'one-time'}
+                    {plan.priceINR !== undefined && ` · ₹${plan.priceINR}`}
+                  </span>
                 </div>
 
                 <ul className="space-y-1.5 mb-5 flex-1">
@@ -176,19 +183,21 @@ export default function UpgradeModal({ isOpen, onClose, reason, creditsRemaining
                   ))}
                 </ul>
 
-                {/* Razorpay — INR */}
-                <button
-                  onClick={() => handleRazorpay(plan)}
-                  disabled={anyLoading}
-                  className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-medium bg-brand-600 hover:bg-brand-500 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed mb-2"
-                >
-                  {isRzpLoading ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <Wallet className="w-3.5 h-3.5" />
-                  )}
-                  Pay ₹{plan.priceINR}
-                </button>
+                                {/* Razorpay — INR, only when this plan has an INR price */}
+                {plan.priceINR !== undefined && (
+                  <button
+                    onClick={() => handleRazorpay(plan)}
+                    disabled={anyLoading}
+                    className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-medium bg-brand-600 hover:bg-brand-500 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed mb-2"
+                  >
+                    {isRzpLoading ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Wallet className="w-3.5 h-3.5" />
+                    )}
+                    Pay ₹{plan.priceINR}
+                  </button>
+                )}
 
                 {/* Stripe — USD */}
                 <button
@@ -212,7 +221,7 @@ export default function UpgradeModal({ isOpen, onClose, reason, creditsRemaining
           <p className="text-center text-sm text-red-400 px-6 pb-4">{error}</p>
         )}
 
-        <p className="text-center text-xs text-gray-600 pb-5">
+        <p className="text-center text-xs text-gray-400 pb-5">
           Secured by Razorpay · Stripe · Cancel anytime
         </p>
       </div>
