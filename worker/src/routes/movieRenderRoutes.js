@@ -1,3 +1,6 @@
+const express = require("express");
+const router = express.Router();
+
 router.post("/api/render-movie", async (req, res) => {
   try {
       const fs = require("fs-extra");
@@ -62,3 +65,5 @@ router.post("/api/render-movie", async (req, res) => {
 
   }
 });
+
+module.exports = router;
