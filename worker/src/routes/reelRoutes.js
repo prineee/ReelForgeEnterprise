@@ -356,20 +356,50 @@ router.post('/api/generate-pexels-scenes', async (req, res) => {
 
   function resolveBin(envKey, pkg) {
     if (process.env[envKey]) return process.env[envKey]
-    try { return require(pkg).path } catch { }
+    try {
+      const p = require(pkg).path
+      if (p && fsSync.existsSync(p)) return p
+      console.warn(`[pexels-scenes] ${pkg} installer path missing on disk: ${p}`)
+    } catch (err) {
+      console.warn(`[pexels-scenes] ${pkg} not available: ${err.message}`)
+    }
     return envKey === 'FFMPEG_PATH' ? 'ffmpeg' : 'ffprobe'
   }
   const FFMPEG_BIN = resolveBin('FFMPEG_PATH', '@ffmpeg-installer/ffmpeg')
+  console.log('[pexels-scenes] FFMPEG_BIN =', FFMPEG_BIN, '| exists:', fsSync.existsSync(FFMPEG_BIN))
 
   function runFFmpeg(args) {
     return new Promise((resolve, reject) => {
-      const proc = spawn(FFMPEG_BIN, args, { stdio: ['ignore', 'ignore', 'pipe'] })
-      proc.stderr.on('data', d => console.log('[ffmpeg]', d.toString().trimEnd()))
-      proc.on('close', code => {
-        if (code === 0) resolve()
-        else reject(new Error(`FFmpeg exited with code ${code}`))
+      console.log('[ffmpeg] spawn:', FFMPEG_BIN, args.join(' '))
+
+      let proc
+      try {
+        proc = spawn(FFMPEG_BIN, args, { stdio: ['ignore', 'ignore', 'pipe'] })
+      } catch (err) {
+        return reject(new Error(`Failed to spawn FFmpeg (${FFMPEG_BIN}): ${err.message}`))
+      }
+
+      let stderrTail = ''
+      proc.stderr.on('data', d => {
+        const chunk = d.toString()
+        stderrTail = (stderrTail + chunk).slice(-4000)
+        console.log('[ffmpeg]', chunk.trimEnd())
       })
-      proc.on('error', err => reject(err))
+
+      proc.on('error', err => {
+        reject(new Error(`FFmpeg failed to start (${FFMPEG_BIN}): ${err.message}`))
+      })
+
+      proc.on('close', (code, signal) => {
+        console.log(`[ffmpeg] closed: code=${code} signal=${signal}`)
+        if (code === 0) {
+          resolve()
+        } else {
+          reject(new Error(
+            `FFmpeg exited with code ${code}${signal ? ` (signal ${signal})` : ''}\n--- ffmpeg stderr tail ---\n${stderrTail}`
+          ))
+        }
+      })
     })
   }
 
