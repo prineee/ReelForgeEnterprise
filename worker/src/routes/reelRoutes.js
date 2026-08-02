@@ -1,4 +1,8 @@
 ﻿'use strict'
+console.log("====================================");
+console.log("LOADED REELROUTES");
+console.log(__filename);
+console.log("====================================");
 
 const express = require('express')
 const router  = express.Router()
@@ -568,7 +572,16 @@ router.post('/api/generate-pexels-scenes', async (req, res) => {
         outputPath,
       ]
     }
+    console.log('[ffmpeg] Starting render...');
+console.log(ffmpegArgs.join(' '));
 
+await runFFmpeg(ffmpegArgs);
+
+if (!fsSync.existsSync(outputPath)) {
+    throw new Error('FFmpeg did not create final.mp4');
+}
+
+console.log('[ffmpeg] Render completed');
 
     const outSize = fsSync.statSync(outputPath).size
     if (outSize === 0) throw new Error('FFmpeg produced empty file')
