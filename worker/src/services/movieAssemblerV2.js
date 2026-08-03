@@ -11,6 +11,7 @@ const { FFMPEG_BIN, FFPROBE_BIN } = require('./ffmpegUtils')
 const { downloadOneClip } = require('./pexels')
 const { calculateSceneTiming } = require('./sceneTiming')
 const { analyzeClip } = require('./clipAnalyzer')
+const { buildTransitionGraph, renderTransitionChain } = require('./transitionEngine')
 
 const TARGET_WIDTH  = 720
 const TARGET_HEIGHT = 1280
@@ -818,6 +819,29 @@ function resolveTransition(transition, transitionDuration) {
   return { transition: t, transitionDuration: d }
 }
 
+// ── V2.3 Cinematic Transition Engine integration — fully opt-in ──────────────
+// Resolves whether the Transition Engine should run for this render, and if so
+// which style. Backward compatibility is the whole point of this function:
+//   - transitionStyle omitted/null   -> null (engine untouched — pre-V2.3 path)
+//   - transitionStyle === 'none'     -> null (explicit opt-out)
+//   - transitionDuration === 0       -> null (explicit opt-out, either system)
+//   - a recognized style             -> that style
+//   - anything else while opted in   -> 'auto' (documented default)
+// Existing callers that never pass transitionStyle at all get case 1 on every
+// render, so nothing about their behavior changes.
+const TRANSITION_ENGINE_STYLES = new Set([
+  'auto', 'fade', 'dissolve', 'cut', 'slide-left', 'slide-right',
+  'zoom-in', 'zoom-out', 'blur-fade', 'flash', 'dip-to-black',
+])
+
+function resolveTransitionEngineStyle(transitionStyle, transitionDuration) {
+  if (transitionStyle === undefined || transitionStyle === null) return null
+  if (transitionStyle === 'none') return null
+  if (Number(transitionDuration) === 0) return null
+  if (TRANSITION_ENGINE_STYLES.has(transitionStyle)) return transitionStyle
+  return 'auto'
+}
+
 // ── Transitions ('fade' mode): bake fade-in/out into each clip, then concat via demuxer as usual ──
 async function applyFadeTransitions(normalizedPaths, jobDir, transitionDuration) {
   if (!normalizedPaths || normalizedPaths.length < 2) return normalizedPaths
@@ -1254,9 +1278,13 @@ async function cleanup(jobDir) {
 // ── Full pipeline orchestration ──
 // Accepts EITHER pre-downloaded `rawClipPaths`, OR `scenes` (+ optional voice_url / voice_data)
 // in which case MovieAssemblerV2 performs the download itself (Step 1).
+// `transitionStyle` (V2.3, optional): 'auto' | 'fade' | 'dissolve' | 'cut' | 'slide-left' |
+// 'slide-right' | 'zoom-in' | 'zoom-out' | 'blur-fade' | 'flash' | 'dip-to-black' | 'none'.
+// Omitted entirely (existing callers), 'none', or transitionDuration === 0 all mean the
+// pre-V2.3 merge path runs exactly as before — see resolveTransitionEngineStyle.
 async function assembleMovie({
   rawClipPaths, scenes, movie_id, movieId, jobDir, voicePath, voice_url, voice_data, duration_minutes,
-  transition, transitionDuration, captionScript, captionOptions, onProgress, sendProgress,
+  transition, transitionDuration, transitionStyle, captionScript, captionOptions, onProgress, sendProgress,
 }) {
   const progress = (data) => {
     if (typeof onProgress === 'function') onProgress(data)
@@ -1266,6 +1294,7 @@ async function assembleMovie({
   const resolvedJobDir  = jobDir || path.join(os.tmpdir(), `movie_${uuidv4().slice(0, 8)}`)
   const { transition: resolvedTransition, transitionDuration: resolvedTransitionDuration } =
     resolveTransition(transition, transitionDuration)
+  const transitionEngineStyle = resolveTransitionEngineStyle(transitionStyle, transitionDuration)
 
   let resolvedRawClipPaths = rawClipPaths
   let resolvedVoicePath    = voicePath
@@ -1314,19 +1343,58 @@ async function assembleMovie({
 
     let normalizedPaths = await prepareTimeline(resolvedRawClipPaths, resolvedJobDir, duration_minutes, scenesForTiming, keywordsForTiming)
 
-    if (resolvedTransition === 'fade') {
+    // Scene count preserved / no dropped or duplicated clips (Step 6 validation) —
+    // checked once here, upstream of either merge path, since prepareTimeline is
+    // the only place clips could structurally go missing.
+    if (normalizedPaths.length !== resolvedRawClipPaths.length) {
+      throw new Error(
+        `[V2] assembleMovie: clip count mismatch after normalization — ${resolvedRawClipPaths.length} in, ${normalizedPaths.length} out`
+      )
+    }
+
+    // The Transition Engine bakes its own transitions in during rendering below —
+    // skip the legacy pre-bake so a caller that (unusually) sets both the old
+    // `transition: 'fade'` and a new `transitionStyle` doesn't get double transitions.
+    if (resolvedTransition === 'fade' && !transitionEngineStyle) {
       normalizedPaths = await applyFadeTransitions(normalizedPaths, resolvedJobDir, resolvedTransitionDuration)
     }
 
     timings.normalizeMs = Date.now() - normalizeStart
     progress({ type: 'progress', pct: 45, message: 'Timeline ready.' })
 
-    // ── Render (concat / crossfade) ────────────────────────────────────────
+    // ── Render (concat / crossfade / Cinematic Transition Engine) ──────────
     console.log('[V2] Render')
     const renderStart = Date.now()
 
     let mergedPath
-    if (resolvedTransition === 'crossfade') {
+    let actualRenderedDuration = null
+
+    if (transitionEngineStyle) {
+      const sceneDurations = await Promise.all(normalizedPaths.map(p => getClipDuration(p)))
+      const transitionScenes = normalizedPaths.map((_, i) => {
+        const base = (scenesForTiming && scenesForTiming[i]) || {}
+        return { ...base, scene_number: base.scene_number ?? (i + 1), duration: sceneDurations[i] }
+      })
+
+      const transitionGraph = buildTransitionGraph({
+        scenes: transitionScenes,
+        transitionStyle: transitionEngineStyle,
+        transitionDuration,
+      })
+
+      mergedPath = path.join(resolvedJobDir, 'merged.mp4')
+      const renderResult = await renderTransitionChain(normalizedPaths, transitionGraph, mergedPath)
+      actualRenderedDuration = renderResult.actualDuration
+
+      console.log(
+        `[V2] Transition Engine Enabled\n` +
+        `[V2]   Style: ${transitionEngineStyle}\n` +
+        `[V2]   Transitions Applied: ${transitionGraph.transitions.length}\n` +
+        `[V2]   Render Duration: ${transitionGraph.totalDuration.toFixed(2)} sec\n` +
+        `[V2]   Actual Output: ${actualRenderedDuration.toFixed(2)} sec` +
+        (renderResult.downgradedToHardCuts ? '\n[V2]   (xfade unsupported by this FFmpeg build — rendered as hard cuts)' : '')
+      )
+    } else if (resolvedTransition === 'crossfade') {
       mergedPath = await concatWithCrossfade(normalizedPaths, resolvedJobDir, resolvedTransitionDuration)
     } else {
       const concatPath = buildConcatList(normalizedPaths, resolvedJobDir)
@@ -1416,6 +1484,7 @@ module.exports = {
   buildConcatList,
   concatNormalizedClips,
   resolveTransition,
+  resolveTransitionEngineStyle,
   applyFadeTransitions,
   ffmpegSupportsXfade,
   concatWithCrossfade,
