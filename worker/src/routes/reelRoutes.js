@@ -9,6 +9,7 @@ const router  = express.Router()
 
 const { processVideo, processReel }              = require('../services/videoProcessor')
 const { updateVideoRecord, updateProjectStatus } = require('../services/supabase')
+const MovieAssemblerV2                           = require('../services/movieAssemblerV2')
 
 // In-memory job store â€” survives the request lifecycle for status polling.
 const jobs = new Map()
@@ -332,6 +333,8 @@ router.post('/api/generate-pexels-scenes', async (req, res) => {
     } catch { /* closed */ }
   }
 
+  console.log('[Route] Request received')
+
   const { scenes, movie_id, voice_url, voice_data, duration_minutes } = req.body
 
   if (!scenes?.length) {
@@ -339,311 +342,34 @@ router.post('/api/generate-pexels-scenes', async (req, res) => {
     return res.end()
   }
 
-  const { downloadOneClip, sceneToKeyword } = require('../services/pexels')
-  const cloudinary = require('cloudinary').v2
-  cloudinary.config({
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-    api_key: process.env.CLOUDINARY_API_KEY,
-    api_secret: process.env.CLOUDINARY_API_SECRET,
-  })
-
-  const os = require('os')
-  const path = require('path')
-  const fs = require('fs-extra')
-  const fsSync = require('fs')
-  const { v4: uuidv4 } = require('uuid')
-  const { spawn } = require('child_process')
-
-  function resolveBin(envKey, pkg) {
-    if (process.env[envKey]) return process.env[envKey]
-    try {
-      const p = require(pkg).path
-      if (p && fsSync.existsSync(p)) return p
-      console.warn(`[pexels-scenes] ${pkg} installer path missing on disk: ${p}`)
-    } catch (err) {
-      console.warn(`[pexels-scenes] ${pkg} not available: ${err.message}`)
-    }
-    return envKey === 'FFMPEG_PATH' ? 'ffmpeg' : 'ffprobe'
-  }
-  const FFMPEG_BIN = resolveBin('FFMPEG_PATH', '@ffmpeg-installer/ffmpeg')
-  console.log('[pexels-scenes] FFMPEG_BIN =', FFMPEG_BIN, '| exists:', fsSync.existsSync(FFMPEG_BIN))
-
-  function runFFmpeg(args) {
-    return new Promise((resolve, reject) => {
-      console.log('[ffmpeg] spawn:', FFMPEG_BIN, args.join(' '))
-
-      let proc
-      try {
-        proc = spawn(FFMPEG_BIN, args, { stdio: ['ignore', 'ignore', 'pipe'] })
-      } catch (err) {
-        return reject(new Error(`Failed to spawn FFmpeg (${FFMPEG_BIN}): ${err.message}`))
-      }
-
-      let stderrTail = ''
-      proc.stderr.on('data', d => {
-        const chunk = d.toString()
-        stderrTail = (stderrTail + chunk).slice(-4000)
-        console.log('[ffmpeg]', chunk.trimEnd())
-      })
-
-      proc.on('error', err => {
-        reject(new Error(`FFmpeg failed to start (${FFMPEG_BIN}): ${err.message}`))
-      })
-
-      proc.on('close', (code, signal) => {
-        console.log(`[ffmpeg] closed: code=${code} signal=${signal}`)
-        if (code === 0) {
-          resolve()
-        } else {
-          reject(new Error(
-            `FFmpeg exited with code ${code}${signal ? ` (signal ${signal})` : ''}\n--- ffmpeg stderr tail ---\n${stderrTail}`
-          ))
-        }
-      })
-    })
-  }
-
-  const jobDir = path.join(os.tmpdir(), `movie_pexels_${uuidv4().slice(0, 8)}`)
-  await fs.ensureDir(jobDir)
-
   try {
-    const totalSecs = Math.round((duration_minutes || 3) * 60)
-    const defaultSecsPerScene = Math.ceil(totalSecs / scenes.length)
+    console.log('[Route] Calling MovieAssemblerV2')
 
-    console.log(`[pexels] Total: ${totalSecs}s for ${scenes.length} scenes`)
-    console.log(`[pexels] Default per scene: ${defaultSecsPerScene}s`)
-
-    send({
-      type: 'start',
-      total: scenes.length,
-      message: `Fetching ${scenes.length} Pexels clips for ${duration_minutes || 3}-min video...`,
+    const result = await MovieAssemblerV2.assembleMovie({
+      scenes,
+      movie_id,
+      voice_url,
+      voice_data,
+      duration_minutes,
+      sendProgress: send,
     })
-
-    // ── Step 1: Download one clip per scene ────────────────────────────────────
-    const clipPaths = []
-
-    for (let i = 0; i < scenes.length; i++) {
-      const scene = scenes[i]
-      const pct = Math.round((i / scenes.length) * 50)
-
-      send({
-        type: 'progress',
-        pct,
-        scene_number: scene.scene_number,
-        message: `Downloading clip ${scene.scene_number}/${scenes.length}...`,
-      })
-
-      // Smart keyword extraction: priority order visual_prompt > visualNote > title > voiceover
-      function extractSmartKeyword(scene) {
-        const raw = (
-          scene.visual_prompt ||
-          scene.visualNote ||
-          scene.title ||
-          (scene.voiceover || '').slice(0, 100) ||
-          ''
-        ).toLowerCase()
-
-        const cleaned = raw
-          .replace(/\[.*?\]/g, '')
-          .replace(/b-roll|close.?up|wide shot|medium shot|drone|tracking/gi, '')
-          .replace(/cinematic|dramatic|establishing/gi, '')
-          .replace(/[^\w\s]/g, ' ')
-          .trim()
-
-        const stopWords = new Set([
-          'the','a','an','is','are','was','were','be','been',
-          'have','has','had','do','does','did','will','would',
-          'could','should','may','might','shall','can','need',
-          'this','that','these','those','with','from','into',
-          'through','during','before','after','above','below',
-          'and','but','or','for','nor','so','yet','both',
-          'either','neither','not','only','own','same','than',
-          'too','very','just','because','as','until','while',
-          'of','at','by','about','against','between','each',
-          'few','more','most','other','some','such','no',
-        ])
-
-        const words = cleaned.split(/\s+/)
-          .filter(w => w.length > 2 && !stopWords.has(w))
-          .slice(0, 4)
-
-        const keyword = words.join(' ') || scene.title || 'lifestyle'
-        console.log('[keyword] Scene ' + scene.scene_number + ' -> "' + keyword + '"')
-        console.log('[keyword] Source: ' + (scene.visual_prompt || scene.visualNote || '').slice(0, 80))
-        return keyword
-      }
-
-      const primaryKeyword = extractSmartKeyword(scene)
-      const destPath = path.join(jobDir, 'scene_' + scene.scene_number + '.mp4')
-
-      const keywordsToTry = [
-        primaryKeyword,
-        primaryKeyword.split(' ').slice(0, 2).join(' '),
-        scene.title || '',
-        'lifestyle people',
-      ]
-
-      let downloaded = false
-      for (const kw of keywordsToTry) {
-        if (downloaded || !kw.trim()) continue
-        try {
-          await downloadOneClip(kw, destPath, true)
-          const size = fsSync.statSync(destPath).size
-          if (size > 100000) {
-            console.log('[pexels] Success with keyword: "' + kw + '" (' + size + ' bytes)')
-            clipPaths.push({
-              path: destPath,
-              scene,
-              duration: scene.duration_seconds || defaultSecsPerScene,
-              keyword: kw,
-            })
-            send({
-              type: 'scene_done',
-              scene_number: scene.scene_number,
-              keyword: kw,
-              pct: Math.round(((i + 1) / scenes.length) * 50),
-            })
-            downloaded = true
-          }
-        } catch (err) {
-          console.warn('[pexels] Failed "' + kw + '":', err.message)
-        }
-      }
-
-      if (!downloaded) {
-        console.warn('[pexels] All keywords failed for scene', scene.scene_number)
-      }
-    }
-
-    if (clipPaths.length === 0) throw new Error('No clips downloaded successfully')
-
-    send({ type: 'progress', pct: 55, message: 'Building video concat list...' })
-
-    // Calculate total needed seconds
-    const concatPath = path.join(jobDir, 'concat.txt')
-    const concatLines = []
-    const totalSecsTarget = totalSecs
-    console.log('[duration] Target: ' + totalSecsTarget + 's = ' + (duration_minutes || 3) + ' min')
-    console.log('[duration] Downloaded clips: ' + clipPaths.length)
-
-    let builtSecs = 0
-    let loopIdx = 0
-    const MAX_LOOPS = 500
-
-    while (builtSecs < totalSecsTarget && loopIdx < MAX_LOOPS) {
-      const clipIdx = loopIdx % clipPaths.length
-      const { path: clipPath, duration } = clipPaths[clipIdx]
-      const remaining = totalSecsTarget - builtSecs
-      const useDuration = Math.min(duration, remaining)
-
-      concatLines.push("file '" + clipPath + "'")
-      concatLines.push('duration ' + useDuration)
-
-      builtSecs += useDuration
-      loopIdx++
-
-      if (builtSecs >= totalSecsTarget) break
-    }
-
-    if (clipPaths.length > 0) {
-      concatLines.push("file '" + clipPaths[0].path + "'")
-    }
-
-    fsSync.writeFileSync(concatPath, concatLines.join('\n'), 'utf8')
-    console.log('[concat] Built ' + builtSecs.toFixed(1) + 's from ' + loopIdx + ' entries')
-    console.log('[concat] Lines: ' + concatLines.length + ', first few: ' + concatLines.slice(0, 4).join(' | '))
-
-    const concatFileSize = fsSync.statSync(concatPath).size
-    console.log('[concat] File size: ' + concatFileSize + ' bytes')
-
-    send({ type: 'progress', pct: 60, message: 'Rendering ' + (duration_minutes || 3) + '-min video...' })
-
-    // Step 3: Render with FFmpeg
-    const outputPath = path.join(jobDir, 'final.mp4')
-
-    const hasAudio = !!(voice_url && voice_url.startsWith('http'))
-    let ffmpegArgs
-
-    if (hasAudio) {
-      const audioPath = path.join(jobDir, 'voice.wav')
-      const axios = require('axios')
-      const audioRes = await axios({ method: 'get', url: voice_url, responseType: 'stream', timeout: 60000 })
-      await new Promise((resolve, reject) => {
-        const w = fsSync.createWriteStream(audioPath)
-        audioRes.data.pipe(w)
-        w.on('finish', resolve)
-        w.on('error', reject)
-      })
-
-      ffmpegArgs = [
-        '-y',
-        '-f', 'concat', '-safe', '0', '-i', concatPath,
-        '-i', audioPath,
-        '-map', '0:v:0',
-        '-map', '1:a:0',
-        '-vf', 'scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280',
-        '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '30',
-        '-c:a', 'aac', '-b:a', '96k',
-        '-t', String(totalSecsTarget),
-        '-movflags', '+faststart',
-        '-threads', '2',
-        outputPath,
-      ]
-    } else {
-      ffmpegArgs = [
-        '-y',
-        '-f', 'concat', '-safe', '0', '-i', concatPath,
-        '-vf', 'scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280',
-        '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '30',
-        '-an',
-        '-t', String(totalSecsTarget),
-        '-movflags', '+faststart',
-        '-threads', '2',
-        outputPath,
-      ]
-    }
-    console.log('[ffmpeg] Starting render...');
-console.log(ffmpegArgs.join(' '));
-
-await runFFmpeg(ffmpegArgs);
-
-if (!fsSync.existsSync(outputPath)) {
-    throw new Error('FFmpeg did not create final.mp4');
-}
-
-console.log('[ffmpeg] Render completed');
-
-    const outSize = fsSync.statSync(outputPath).size
-    if (outSize === 0) throw new Error('FFmpeg produced empty file')
-    console.log(`[ffmpeg] Output: ${outSize} bytes`)
-
-    // ── Step 4: Upload to Cloudinary ───────────────────────────────────────────
-    send({ type: 'progress', pct: 88, message: 'Uploading to Cloudinary...' })
-
-    const uploaded = await cloudinary.uploader.upload(outputPath, {
-      resource_type: 'video',
-      folder: 'reelforge/movies',
-      public_id: `movie_${movie_id ?? 'x'}_final_${Date.now()}`,
-    })
-
-    console.log(`[done] video_url: ${uploaded.secure_url}`)
 
     send({
       type: 'done',
       pct: 100,
-      message: `${clipPaths.length} scenes merged into ${duration_minutes || 3}-min video!`,
-      video_url: uploaded.secure_url,
-      completed_scenes: clipPaths.map(c => ({
-        scene_number: c.scene.scene_number,
-        video_url: uploaded.secure_url,
+      message: `${result.completedScenes.length} scenes merged into ${duration_minutes || 3}-min video!`,
+      video_url: result.videoUrl,
+      completed_scenes: result.completedScenes.map(c => ({
+        scene_number: c.scene_number,
+        video_url: result.videoUrl,
       })),
     })
 
+    console.log('[Route] Completed')
   } catch (err) {
-    console.error('[pexels-scenes fatal]', err.message)
+    console.error('[generate-pexels-scenes]', err.message)
     send({ type: 'error', error: err.message })
   } finally {
-    await fs.remove(jobDir).catch(() => {})
     res.end()
   }
 })

@@ -1,0 +1,85 @@
+{
+  "results": [
+    {
+      "category": "provider",
+      "name": "Pixabay: live search API",
+      "pass": false,
+      "ms": 20036,
+      "error": "timeout of 20000ms exceeded"
+    },
+    {
+      "category": "provider",
+      "name": "Pexels: live search API",
+      "pass": true,
+      "ms": 489,
+      "extra": {
+        "videoCount": 5,
+        "latencyMs": 489
+      }
+    },
+    {
+      "category": "provider",
+      "name": "Supabase: live connectivity (0-row update, no data touched)",
+      "pass": true,
+      "ms": 2111,
+      "extra": {
+        "probeId": "5a624334-0df2-478a-9c18-676baa6a68e2",
+        "latencyMs": 2109,
+        "rowsAffected": 0
+      }
+    },
+    {
+      "category": "pipeline",
+      "name": "Full live pipeline: download -> normalize -> timeline -> render -> voice -> validate -> upload",
+      "pass": false,
+      "ms": 641684,
+      "error": "[V2] uploadMovie: Cloudinary upload failed for C:\\Users\\prine\\AppData\\Local\\Temp\\movie_ea851ecb\\movie.mp4: [V2] Cloudinary upload (movie.mp4) failed after 3 attempts: cloud_name is disabled"
+    },
+    {
+      "category": "pipeline",
+      "name": "Uploaded video is publicly reachable (real HTTP fetch)",
+      "pass": false,
+      "ms": 0,
+      "error": "no pipeline result to verify — previous step failed"
+    },
+    {
+      "category": "pipeline",
+      "name": "Live captions: real /api/burn-captions round-trip",
+      "pass": false,
+      "ms": 4516,
+      "error": "[V2] uploadMovie: Cloudinary upload failed for C:\\Users\\prine\\AppData\\Local\\Temp\\rc4_live_1785674130884\\caption_fixture_normalized.mp4: [V2] Cloudinary upload (caption_fixture_normalized.mp4) failed after 3 attempts: cloud_name is disabled"
+    }
+  ],
+  "latencies": {
+    "pixabaySearchMs": null,
+    "pexelsSearchMs": 489,
+    "supabaseMs": 2109,
+    "uploadMs": [],
+    "renderMs": [],
+    "captionUploadMs": null
+  },
+  "providerFailures": [
+    {
+      "category": "provider",
+      "name": "Pixabay: live search API",
+      "error": "timeout of 20000ms exceeded"
+    },
+    {
+      "category": "pipeline",
+      "name": "Full live pipeline: download -> normalize -> timeline -> render -> voice -> validate -> upload",
+      "error": "[V2] uploadMovie: Cloudinary upload failed for C:\\Users\\prine\\AppData\\Local\\Temp\\movie_ea851ecb\\movie.mp4: [V2] Cloudinary upload (movie.mp4) failed after 3 attempts: cloud_name is disabled"
+    },
+    {
+      "category": "pipeline",
+      "name": "Uploaded video is publicly reachable (real HTTP fetch)",
+      "error": "no pipeline result to verify — previous step failed"
+    },
+    {
+      "category": "pipeline",
+      "name": "Live captions: real /api/burn-captions round-trip",
+      "error": "[V2] uploadMovie: Cloudinary upload failed for C:\\Users\\prine\\AppData\\Local\\Temp\\rc4_live_1785674130884\\caption_fixture_normalized.mp4: [V2] Cloudinary upload (caption_fixture_normalized.mp4) failed after 3 attempts: cloud_name is disabled"
+    }
+  ],
+  "cleanupResults": [],
+  "generatedAt": "2026-08-02T12:46:39.811Z"
+}

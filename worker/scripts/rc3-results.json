@@ -1,0 +1,414 @@
+{
+  "results": [
+    {
+      "category": "scene-count",
+      "name": "1 scene(s)",
+      "pass": true,
+      "ms": 4151,
+      "extra": {
+        "timings": {
+          "downloadMs": 1,
+          "normalizeMs": 3943,
+          "renderMs": 72,
+          "voiceMs": 7,
+          "uploadMs": 18,
+          "totalMs": 4145
+        }
+      }
+    },
+    {
+      "category": "scene-count",
+      "name": "2 scene(s)",
+      "pass": true,
+      "ms": 4421,
+      "extra": {
+        "timings": {
+          "downloadMs": 0,
+          "normalizeMs": 4211,
+          "renderMs": 74,
+          "voiceMs": 4,
+          "uploadMs": 26,
+          "totalMs": 4418
+        }
+      }
+    },
+    {
+      "category": "scene-count",
+      "name": "5 scene(s)",
+      "pass": true,
+      "ms": 4954,
+      "extra": {
+        "timings": {
+          "downloadMs": 0,
+          "normalizeMs": 4730,
+          "renderMs": 78,
+          "voiceMs": 5,
+          "uploadMs": 30,
+          "totalMs": 4949
+        }
+      }
+    },
+    {
+      "category": "scene-count",
+      "name": "10 scene(s)",
+      "pass": true,
+      "ms": 5821,
+      "extra": {
+        "timings": {
+          "downloadMs": 0,
+          "normalizeMs": 5584,
+          "renderMs": 94,
+          "voiceMs": 5,
+          "uploadMs": 26,
+          "totalMs": 5816
+        }
+      }
+    },
+    {
+      "category": "scene-count",
+      "name": "20 scene(s)",
+      "pass": true,
+      "ms": 7607,
+      "extra": {
+        "timings": {
+          "downloadMs": 0,
+          "normalizeMs": 7363,
+          "renderMs": 111,
+          "voiceMs": 5,
+          "uploadMs": 19,
+          "totalMs": 7601
+        }
+      }
+    },
+    {
+      "category": "scene-count",
+      "name": "30 scene(s)",
+      "pass": true,
+      "ms": 9278,
+      "extra": {
+        "timings": {
+          "downloadMs": 0,
+          "normalizeMs": 8992,
+          "renderMs": 139,
+          "voiceMs": 4,
+          "uploadMs": 31,
+          "totalMs": 9272
+        }
+      }
+    },
+    {
+      "category": "duration",
+      "name": "60-second movie",
+      "pass": true,
+      "ms": 5216,
+      "extra": null
+    },
+    {
+      "category": "duration",
+      "name": "3-minute movie",
+      "pass": true,
+      "ms": 13888,
+      "extra": null
+    },
+    {
+      "category": "duration",
+      "name": "5-minute movie",
+      "pass": true,
+      "ms": 22464,
+      "extra": null
+    },
+    {
+      "category": "duration",
+      "name": "10-minute movie",
+      "pass": true,
+      "ms": 46125,
+      "extra": null
+    },
+    {
+      "category": "voice",
+      "name": "with voice",
+      "pass": true,
+      "ms": 7196,
+      "extra": null
+    },
+    {
+      "category": "voice",
+      "name": "without voice",
+      "pass": true,
+      "ms": 5329,
+      "extra": null
+    },
+    {
+      "category": "captions",
+      "name": "captions on",
+      "pass": true,
+      "ms": 5385,
+      "extra": null
+    },
+    {
+      "category": "captions",
+      "name": "captions off",
+      "pass": true,
+      "ms": 5558,
+      "extra": null
+    },
+    {
+      "category": "transition",
+      "name": "none",
+      "pass": true,
+      "ms": 3535,
+      "extra": null
+    },
+    {
+      "category": "transition",
+      "name": "fade",
+      "pass": true,
+      "ms": 5774,
+      "extra": null
+    },
+    {
+      "category": "transition",
+      "name": "crossfade",
+      "pass": true,
+      "ms": 4934,
+      "extra": null
+    },
+    {
+      "category": "deep-dive",
+      "name": "independently-probed golden path",
+      "pass": true,
+      "ms": 10728,
+      "extra": {
+        "probe": {
+          "width": 720,
+          "height": 1280,
+          "fps": 25,
+          "codec": "h264",
+          "pixFmt": "yuv420p",
+          "duration": 12
+        },
+        "fileSizeBytes": 761538,
+        "jobDir": "C:\\Users\\prine\\AppData\\Local\\Temp\\rc3_qualification_1785673122170\\deep_dive_job"
+      }
+    },
+    {
+      "category": "memory",
+      "name": "5x sequential render heap trend",
+      "pass": true,
+      "ms": 16752,
+      "extra": {
+        "heapSamples": [
+          {
+            "iteration": 0,
+            "beforeMB": 16.862892150878906,
+            "afterMB": 16.32579803466797
+          },
+          {
+            "iteration": 1,
+            "beforeMB": 16.328643798828125,
+            "afterMB": 16.481903076171875
+          },
+          {
+            "iteration": 2,
+            "beforeMB": 16.483726501464844,
+            "afterMB": 16.620140075683594
+          },
+          {
+            "iteration": 3,
+            "beforeMB": 16.621963500976562,
+            "afterMB": 16.87347412109375
+          },
+          {
+            "iteration": 4,
+            "beforeMB": 16.87529754638672,
+            "afterMB": 17.07598876953125
+          }
+        ],
+        "growthMB": 0.7501907348632812,
+        "gcAvailable": false
+      }
+    },
+    {
+      "category": "timeout",
+      "name": "FFmpeg process timeout kills a hung/slow render",
+      "pass": true,
+      "ms": 1020,
+      "extra": null
+    },
+    {
+      "category": "retry",
+      "name": "withRetry succeeds after transient failures",
+      "pass": true,
+      "ms": 36,
+      "extra": null
+    },
+    {
+      "category": "retry",
+      "name": "withRetry exhausts and throws after 3 attempts",
+      "pass": true,
+      "ms": 31,
+      "extra": null
+    },
+    {
+      "category": "retry",
+      "name": "Cloudinary upload retries through transient failures",
+      "pass": true,
+      "ms": 3042,
+      "extra": null
+    },
+    {
+      "category": "concurrency",
+      "name": "2 simultaneous renders",
+      "pass": true,
+      "ms": 4618,
+      "extra": {
+        "uniqueJobDirs": 2
+      }
+    },
+    {
+      "category": "concurrency",
+      "name": "5 simultaneous renders",
+      "pass": true,
+      "ms": 8752,
+      "extra": {
+        "uniqueJobDirs": 5
+      }
+    },
+    {
+      "category": "concurrency",
+      "name": "10 simultaneous renders",
+      "pass": true,
+      "ms": 16694,
+      "extra": {
+        "uniqueJobDirs": 10
+      }
+    },
+    {
+      "category": "regression",
+      "name": "route table unchanged (8 routes, same paths/methods)",
+      "pass": true,
+      "ms": 246,
+      "extra": null
+    },
+    {
+      "category": "regression",
+      "name": "live HTTP: /api/generate-pexels-scenes validates scenes[] identically",
+      "pass": true,
+      "ms": 137,
+      "extra": null
+    },
+    {
+      "category": "regression",
+      "name": "live HTTP: GET /api/queue/status responds 200",
+      "pass": true,
+      "ms": 740,
+      "extra": null
+    },
+    {
+      "category": "perf",
+      "name": "largest temp dir — manual measurement (30 scenes, no cleanup)",
+      "pass": true,
+      "ms": 10106,
+      "extra": {
+        "bytes": 6239819
+      }
+    }
+  ],
+  "perf": {
+    "renderMs": [
+      4145,
+      4145,
+      4418,
+      4418,
+      4949,
+      4949,
+      5816,
+      5816,
+      7601,
+      7601,
+      9272,
+      9272,
+      5211,
+      13883,
+      22455,
+      46114,
+      7190,
+      5323,
+      5378,
+      5554,
+      3531,
+      5768,
+      4928,
+      10590
+    ],
+    "normalizeMs": [
+      3943,
+      3943,
+      4211,
+      4211,
+      4730,
+      4730,
+      5584,
+      5584,
+      7363,
+      7363,
+      8992,
+      8992,
+      5004,
+      13640,
+      22172,
+      45696,
+      5878,
+      5084,
+      5149,
+      5321,
+      3274,
+      5474,
+      2992,
+      9040
+    ],
+    "uploadMs": [
+      18,
+      18,
+      26,
+      26,
+      30,
+      30,
+      26,
+      26,
+      19,
+      19,
+      31,
+      31,
+      21,
+      25,
+      29,
+      17,
+      30,
+      28,
+      25,
+      18,
+      22,
+      30,
+      20
+    ],
+    "peakHeapMB": 17.70685577392578,
+    "peakRssMB": 69.4453125,
+    "largestTempDirBytes": 6239819
+  },
+  "passCount": 30,
+  "failCount": 0,
+  "allPass": true,
+  "xfadeSupported": false,
+  "mockUploadCount": 41,
+  "mockUploadBytes": 119194022,
+  "deepDiveProbe": {
+    "width": 720,
+    "height": 1280,
+    "fps": 25,
+    "codec": "h264",
+    "pixFmt": "yuv420p",
+    "duration": 12
+  },
+  "generatedAt": "2026-08-02T12:22:37.981Z"
+}
