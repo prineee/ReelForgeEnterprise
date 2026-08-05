@@ -2,10 +2,10 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 
 /**
- * app/movie-studio/** intentionally renders outside app/(dashboard)'s
- * DashboardShell (full-bleed editor, see WorkspaceShell.tsx) so none of
- * these pages have the main app sidebar. This is the one consistent way
- * back to the rest of the app from that tree's hub/list pages.
+ * app/movie-studio/** now renders inside app/(dashboard)'s DashboardShell
+ * (see app/movie-studio/layout.tsx), so the main app sidebar is present.
+ * This link remains as a direct shortcut back to /dashboard from that
+ * tree's hub/list pages.
  */
 export function BackToDashboardLink() {
   return (
