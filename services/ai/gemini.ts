@@ -1,5 +1,5 @@
 // @ts-ignore - @google/genai ships a d.ts that TS module resolution flags as "not a module"
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, GenerateVideosOperation } from "@google/genai";
 
 const apiKey = process.env.GEMINI_API_KEY;
 if (!apiKey) {
@@ -117,11 +117,9 @@ export async function checkVideoOperation(
   let operation =
     await ai.operations.getVideosOperation({
 
-      operation: {
-
+      operation: Object.assign(new GenerateVideosOperation(), {
         name: operationId,
-
-      },
+      }),
 
     });
 
