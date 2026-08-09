@@ -132,16 +132,25 @@ export class WorkflowExecutor {
    * different total, the honest lever is the scene/character estimates
    * below, which do feed the real calculation.
    */
-  reserveCredits(context: WorkflowContext): ReserveCreditsResult {
+  async reserveCredits(context: WorkflowContext): Promise<ReserveCreditsResult> {
     const { request } = context
     const sceneCount = request.estimatedSceneCount ?? 8
     const characterCount = request.estimatedCharacterCount ?? 3
 
-    const reservations = this.reservePerCategory(context, sceneCount, characterCount)
+    const reservations = await this.reservePerCategory(context, sceneCount, characterCount)
     return { reservations, estimatedRuntimeSeconds: this.estimateRuntimeSeconds(sceneCount, characterCount) }
   }
 
-  private reservePerCategory(context: WorkflowContext, sceneCount: number, characterCount: number): WorkflowReservation[] {
+  /**
+   * Reserves each category sequentially (not Promise.all) — five
+   * reservations for the same production, each its own atomic
+   * reserve_credits() call (see CreditTransaction.ts). Sequential keeps
+   * the resulting WorkflowReservation[] order deterministic and avoids
+   * five concurrent calls contending for the same user row's lock
+   * needlessly; correctness doesn't depend on the ordering either way,
+   * since each call is independently atomic.
+   */
+  private async reservePerCategory(context: WorkflowContext, sceneCount: number, characterCount: number): Promise<WorkflowReservation[]> {
     const plan: { label: string; category: UsageCategory; providerId: string; extra?: Record<string, number> }[] = [
       { label: 'Story Generation', category: UsageCategory.StoryGeneration, providerId: 'GEMINI' },
       { label: 'Images', category: UsageCategory.Images, providerId: 'IMAGEN', extra: { imageCount: characterCount } },
@@ -150,12 +159,14 @@ export class WorkflowExecutor {
       { label: 'Rendering', category: UsageCategory.Rendering, providerId: 'CLOUDINARY' },
     ]
 
-    return plan.map((entry) => {
-      const reservation = this.billingEngine.reserveForProduction(context.request.userId, context.id, [
+    const reservations: WorkflowReservation[] = []
+    for (const entry of plan) {
+      const reservation = await this.billingEngine.reserveForProduction(context.request.userId, context.id, [
         { category: entry.category, providerId: entry.providerId, ...entry.extra },
       ])
-      return this.toWorkflowReservation(entry.label, entry.providerId, reservation)
-    })
+      reservations.push(this.toWorkflowReservation(entry.label, entry.providerId, reservation))
+    }
+    return reservations
   }
 
   private toWorkflowReservation(label: string, providerId: string, reservation: CreditReservation): WorkflowReservation {
@@ -193,41 +204,41 @@ export class WorkflowExecutor {
    * further by this workflow layer today. chargeUsage() auto-releases
    * whatever surplus remains unspent on each reservation.
    */
-  settleReservationsOnSuccess(
+  async settleReservationsOnSuccess(
     context: WorkflowContext,
     realSceneCount: number,
     realCharacterCount?: number
-  ): { reservationId: string; consumed: number; released: number }[] {
+  ): Promise<{ reservationId: string; consumed: number; released: number }[]> {
     const estimatedSceneCount = context.request.estimatedSceneCount ?? 8
     const estimatedCharacterCount = context.request.estimatedCharacterCount ?? 3
     const cappedSceneCount = Math.min(realSceneCount, estimatedSceneCount)
     const cappedCharacterCount = Math.min(realCharacterCount ?? estimatedCharacterCount, estimatedCharacterCount)
 
-    return context.reservations
-      .filter((r) => !r.settled)
-      .map((reservation) => {
-        const category = this.categoryForReservation(reservation)
-        // Must mirror reservePerCategory()'s extra fields exactly per
-        // category — CreditCalculator defaults an omitted sceneCount to 1
-        // unit, so passing it where the reservation didn't (e.g. Rendering,
-        // Story) would re-price a different, larger unit count than what
-        // was actually held and make consume() throw on over-spend.
-        const extra: { sceneCount?: number; imageCount?: number } = {}
-        if (category === UsageCategory.Videos || category === UsageCategory.Voice) {
-          extra.sceneCount = cappedSceneCount
-        }
-        if (category === UsageCategory.Images) {
-          extra.imageCount = cappedCharacterCount
-        }
+    const settlements: { reservationId: string; consumed: number; released: number }[] = []
+    for (const reservation of context.reservations.filter((r) => !r.settled)) {
+      const category = this.categoryForReservation(reservation)
+      // Must mirror reservePerCategory()'s extra fields exactly per
+      // category — CreditCalculator defaults an omitted sceneCount to 1
+      // unit, so passing it where the reservation didn't (e.g. Rendering,
+      // Story) would re-price a different, larger unit count than what
+      // was actually held and make consume() throw on over-spend.
+      const extra: { sceneCount?: number; imageCount?: number } = {}
+      if (category === UsageCategory.Videos || category === UsageCategory.Voice) {
+        extra.sceneCount = cappedSceneCount
+      }
+      if (category === UsageCategory.Images) {
+        extra.imageCount = cappedCharacterCount
+      }
 
-        const record = this.billingEngine.chargeUsage(reservation.reservationId, context.request.userId, context.id, {
-          category,
-          providerId: reservation.providerId,
-          ...extra,
-        })
-        const released = Math.max(0, reservation.amount - record.amount)
-        return { reservationId: reservation.reservationId, consumed: record.amount, released }
+      const record = await this.billingEngine.chargeUsage(reservation.reservationId, context.request.userId, context.id, {
+        category,
+        providerId: reservation.providerId,
+        ...extra,
       })
+      const released = Math.max(0, reservation.amount - record.amount)
+      settlements.push({ reservationId: reservation.reservationId, consumed: record.amount, released })
+    }
+    return settlements
   }
 
   private categoryForReservation(reservation: WorkflowReservation): UsageCategory {

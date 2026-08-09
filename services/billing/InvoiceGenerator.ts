@@ -41,15 +41,14 @@ function sumAmount(records: CreditTransactionRecord[]): number {
 export class InvoiceGenerator {
   constructor(private readonly ledger: CreditLedger, private readonly options: InvoiceGeneratorOptions = DEFAULT_INVOICE_OPTIONS) {}
 
-  generate(userId: UserId, periodStart: ISODateTimeString, periodEnd: ISODateTimeString): Invoice {
+  async generate(userId: UserId, periodStart: ISODateTimeString, periodEnd: ISODateTimeString): Promise<Invoice> {
     const start = new Date(periodStart).getTime()
     const end = new Date(periodEnd).getTime()
     if (Number.isNaN(start) || Number.isNaN(end) || start >= end) {
       throw new InvoiceGeneratorError(`Invalid invoice period: periodStart must be before periodEnd (got "${periodStart}" .. "${periodEnd}").`)
     }
 
-    const history = this.ledger
-      .getHistory(userId)
+    const history = (await this.ledger.getHistory(userId))
       .filter((t) => {
         const at = new Date(t.createdAt).getTime()
         return at >= start && at < end

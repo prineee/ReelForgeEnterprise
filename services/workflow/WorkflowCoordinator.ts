@@ -202,7 +202,7 @@ export class WorkflowCoordinator {
 
   // ── Stage bodies ─────────────────────────────────────────────────────
 
-  private reserveCredits(context: WorkflowContext): WorkflowContext {
+  private async reserveCredits(context: WorkflowContext): Promise<WorkflowContext> {
     // TEMPORARY DIAGNOSTIC — trace only, scoped to this file. This is the
     // only call WorkflowCoordinator makes into ReserveCredits
     // (WorkflowExecutor.reserveCredits(), which itself calls
@@ -213,7 +213,7 @@ export class WorkflowCoordinator {
     // wrapping the call below is what proves that rather than assuming it.
     let reserveResult: ReserveCreditsResult
     try {
-      reserveResult = this.executor.reserveCredits(context)
+      reserveResult = await this.executor.reserveCredits(context)
     } catch (error) {
       console.error(`[TRACE][ReserveCredits] THREW for workflow "${context.id}" (userId=${context.request.userId}).`)
       console.error(`[TRACE][ReserveCredits] returned false: NO — this call path has no boolean-return failure mode, only throw.`)
@@ -247,9 +247,9 @@ export class WorkflowCoordinator {
     return withEstimatedRuntime(next, estimatedRuntimeSeconds)
   }
 
-  private settleCredits(context: WorkflowContext, result: ProductionResult): WorkflowContext {
+  private async settleCredits(context: WorkflowContext, result: ProductionResult): Promise<WorkflowContext> {
     const realSceneCount = result.artifacts.filter((a) => a.type === 'VIDEO').length || context.request.estimatedSceneCount || 8
-    const settlements = this.executor.settleReservationsOnSuccess(context, realSceneCount)
+    const settlements = await this.executor.settleReservationsOnSuccess(context, realSceneCount)
 
     let next = context
     for (const settlement of settlements) {

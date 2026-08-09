@@ -1,12 +1,16 @@
 /**
  * CreditManager.ts
  *
- * The credit lifecycle: grant, reserve, consume, release, refund. This is
- * the layer that decides *whether* a transaction is allowed (enough
- * available balance, reservation still HELD, …) and records it through the
- * injected CreditLedger. Reservation state (HELD/CONSUMED/RELEASED) is
- * tracked here rather than in the ledger, since a reservation is a
- * business decision in progress, not an immutable past event.
+ * The credit lifecycle's thin orchestration layer: grant, reserve,
+ * consume, release, refund. All atomicity and reservation-state tracking
+ * now live in the injected CreditLedger (see CreditTransaction.ts) — this
+ * class no longer keeps its own `reservations` Map. That in-memory map was
+ * itself a Vercel-serverless correctness gap: a reservation created while
+ * handling one request would be invisible to consume()/release() called
+ * while handling a later request on a different instance. The ledger's
+ * reservation state (public.credit_reservations for
+ * SupabaseCreditLedger) is what makes consume()/release() work no matter
+ * which instance created the reservation.
  *
  * Typical lifecycle for one production:
  *   reserve()  — hold an upfront estimate before generation starts
@@ -19,13 +23,9 @@
 import type { CreditBalance, CreditReservation, CreditTransactionRecord, ProductionId, ReservationId, UsageCategory, UserId } from './BillingTypes'
 import { TransactionType } from './BillingTypes'
 import type { CreditLedger } from './CreditTransaction'
+import { InsufficientCreditsError } from './CreditTransaction'
 
-export class InsufficientCreditsError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'InsufficientCreditsError'
-  }
-}
+export { InsufficientCreditsError }
 
 export class CreditManagerError extends Error {
   constructor(message: string) {
@@ -35,135 +35,72 @@ export class CreditManagerError extends Error {
 }
 
 export class CreditManager {
-  private readonly reservations = new Map<ReservationId, CreditReservation>()
-
   constructor(private readonly ledger: CreditLedger) {}
 
-  getBalance(userId: UserId): CreditBalance {
+  getBalance(userId: UserId): Promise<CreditBalance> {
     return this.ledger.getBalance(userId)
   }
 
-  getHistory(userId: UserId): CreditTransactionRecord[] {
+  getHistory(userId: UserId): Promise<CreditTransactionRecord[]> {
     return this.ledger.getHistory(userId)
   }
 
   /** Adds credits outright — a purchase, a monthly subscription grant, or a goodwill adjustment. */
-  grantCredits(userId: UserId, amount: number, reason: string): CreditTransactionRecord {
+  async grantCredits(userId: UserId, amount: number, reason: string): Promise<CreditTransactionRecord> {
     if (amount <= 0) {
       throw new CreditManagerError('grantCredits() amount must be positive.')
     }
-    return this.ledger.append({ userId, type: TransactionType.Purchase, amount, reason })
-  }
-
-  /** Holds `amount` credits against a production before generation begins. Throws if available balance is insufficient. */
-  reserve(userId: UserId, productionId: ProductionId, amount: number, reason: string): CreditReservation {
-    if (amount <= 0) {
-      throw new CreditManagerError('reserve() amount must be positive.')
-    }
-
-    const balance = this.ledger.getBalance(userId)
-    if (balance.available < amount) {
-      throw new InsufficientCreditsError(
-        `User "${userId}" has ${balance.available} available credits, but ${amount} were requested for production "${productionId}".`
-      )
-    }
-
-    const record = this.ledger.append({ userId, type: TransactionType.Reservation, amount, productionId, reason })
-
-    const reservation: CreditReservation = {
-      id: record.id,
-      userId,
-      productionId,
-      amount,
-      status: 'HELD',
-      createdAt: record.createdAt,
-    }
-    this.reservations.set(reservation.id, reservation)
-    return reservation
-  }
-
-  getReservation(reservationId: ReservationId): CreditReservation | undefined {
-    return this.reservations.get(reservationId)
+    return this.ledger.grant(userId, amount, TransactionType.Purchase, undefined, reason)
   }
 
   /**
-   * Spends `amount` (defaulting to the full held amount) from a HELD
-   * reservation. If `amount` is less than the hold, the unused remainder
-   * is automatically released back to available in the same call.
+   * Holds `amount` credits against a production before generation begins.
+   * Throws InsufficientCreditsError if available balance is insufficient.
+   * `category` doubles as this reservation's idempotency key together with
+   * `productionId` — see CreditLedger.reserve()'s doc comment.
    */
-  consume(reservationId: ReservationId, amount?: number, category?: UsageCategory, reason: string = 'Usage charge'): CreditTransactionRecord {
-    const reservation = this.requireHeldReservation(reservationId)
-    const spend = amount ?? reservation.amount
+  async reserve(
+    userId: UserId,
+    productionId: ProductionId,
+    amount: number,
+    category: UsageCategory | undefined,
+    providerId: string | undefined,
+    reason: string
+  ): Promise<CreditReservation> {
+    if (amount <= 0) {
+      throw new CreditManagerError('reserve() amount must be positive.')
+    }
+    return this.ledger.reserve(userId, productionId, category, amount, providerId, reason)
+  }
 
-    if (spend <= 0) {
+  getReservation(reservationId: ReservationId): Promise<CreditReservation | undefined> {
+    return this.ledger.getReservation(reservationId)
+  }
+
+  /**
+   * Spends `amount` from a HELD reservation. If `amount` is less than the
+   * hold, the unused remainder is automatically released back to
+   * available in the same call. `category` isn't a parameter here (unlike
+   * the pre-persistence version) because the ledger already knows it —
+   * it's stored on the reservation itself (see CreditLedger.reserve()).
+   */
+  async consume(reservationId: ReservationId, amount: number, reason: string = 'Usage charge'): Promise<CreditTransactionRecord> {
+    if (amount <= 0) {
       throw new CreditManagerError('consume() amount must be positive.')
     }
-    if (spend > reservation.amount) {
-      throw new CreditManagerError(
-        `Cannot consume ${spend} credits from reservation "${reservationId}": only ${reservation.amount} were held. ` +
-          `Reserve additional credits first.`
-      )
-    }
-
-    const record = this.ledger.append({
-      userId: reservation.userId,
-      type: TransactionType.Consumption,
-      amount: spend,
-      productionId: reservation.productionId,
-      category,
-      reservationId,
-      reason,
-    })
-
-    const unused = reservation.amount - spend
-    if (unused > 0) {
-      this.ledger.append({
-        userId: reservation.userId,
-        type: TransactionType.ReservationRelease,
-        amount: unused,
-        productionId: reservation.productionId,
-        reservationId,
-        reason: 'Unused portion of reservation released after partial consumption',
-      })
-    }
-
-    this.reservations.set(reservationId, { ...reservation, status: 'CONSUMED' })
-    return record
+    return this.ledger.consume(reservationId, amount, reason)
   }
 
   /** Returns an entire unused hold to available — e.g. a production was cancelled before any spend. */
-  release(reservationId: ReservationId, reason: string = 'Reservation released'): CreditTransactionRecord {
-    const reservation = this.requireHeldReservation(reservationId)
-
-    const record = this.ledger.append({
-      userId: reservation.userId,
-      type: TransactionType.ReservationRelease,
-      amount: reservation.amount,
-      productionId: reservation.productionId,
-      reservationId,
-      reason,
-    })
-
-    this.reservations.set(reservationId, { ...reservation, status: 'RELEASED' })
-    return record
+  async release(reservationId: ReservationId, reason: string = 'Reservation released'): Promise<CreditTransactionRecord> {
+    return this.ledger.release(reservationId, reason)
   }
 
   /** Returns credits after the fact — outside the reserve/consume flow entirely. */
-  refund(userId: UserId, amount: number, productionId: ProductionId | undefined, reason: string): CreditTransactionRecord {
+  async refund(userId: UserId, amount: number, productionId: ProductionId | undefined, reason: string): Promise<CreditTransactionRecord> {
     if (amount <= 0) {
       throw new CreditManagerError('refund() amount must be positive.')
     }
-    return this.ledger.append({ userId, type: TransactionType.Refund, amount, productionId, reason })
-  }
-
-  private requireHeldReservation(reservationId: ReservationId): CreditReservation {
-    const reservation = this.reservations.get(reservationId)
-    if (!reservation) {
-      throw new CreditManagerError(`No reservation found for id "${reservationId}".`)
-    }
-    if (reservation.status !== 'HELD') {
-      throw new CreditManagerError(`Reservation "${reservationId}" is already ${reservation.status.toLowerCase()}.`)
-    }
-    return reservation
+    return this.ledger.grant(userId, amount, TransactionType.Refund, productionId, reason)
   }
 }

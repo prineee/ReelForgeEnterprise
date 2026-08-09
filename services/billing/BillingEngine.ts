@@ -12,7 +12,9 @@
  * this is a standalone module a future caller can adopt (e.g. reserving
  * credits before QueueManager.submit(), or charging usage as each
  * MovieProductionService stage completes) without any change to those
- * files. No payment gateway, no database, no network calls anywhere here.
+ * files. No payment gateway integration and no network calls in this file
+ * itself — every method here delegates to CreditManager, whose injected
+ * CreditLedger is what actually talks to Postgres (see CreditTransaction.ts).
  */
 
 import type { CreditBalance, CreditReservation, CreditTransactionRecord, ProductionId, UsageCategory, UserId } from './BillingTypes'
@@ -20,7 +22,7 @@ import { CreditManager } from './CreditManager'
 import { UsageTracker } from './UsageTracker'
 import type { CreditCalculationInput } from './CreditCalculator'
 import { CreditCalculator } from './CreditCalculator'
-import { InMemoryCreditLedger } from './CreditTransaction'
+import { SupabaseCreditLedger } from './CreditTransaction'
 import type { CreditLedger } from './CreditTransaction'
 import { getPlan } from './SubscriptionPolicy'
 import type { SubscriptionPlanId } from './SubscriptionPolicy'
@@ -48,16 +50,16 @@ export class BillingEngine {
     private readonly calculator: CreditCalculator
   ) {}
 
-  getBalance(userId: UserId): CreditBalance {
+  getBalance(userId: UserId): Promise<CreditBalance> {
     return this.creditManager.getBalance(userId)
   }
 
-  getHistory(userId: UserId): CreditTransactionRecord[] {
+  getHistory(userId: UserId): Promise<CreditTransactionRecord[]> {
     return this.creditManager.getHistory(userId)
   }
 
   /** Grants a subscription plan's monthly credit allotment. */
-  grantMonthlyCredits(userId: UserId, planId: SubscriptionPlanId): CreditTransactionRecord {
+  grantMonthlyCredits(userId: UserId, planId: SubscriptionPlanId): Promise<CreditTransactionRecord> {
     const plan = getPlan(planId)
     return this.creditManager.grantCredits(userId, plan.monthlyCredits, `Monthly grant — ${plan.displayName} plan`)
   }
@@ -66,14 +68,26 @@ export class BillingEngine {
    * Reserves credits for a production up front, priced across every
    * capability it's expected to need. Throws InsufficientCreditsError if
    * the user's available balance can't cover the estimate.
+   *
+   * `inputs` is priced as one combined amount but reserved as a single
+   * CreditManager.reserve() call keyed by `inputs[0]`'s category — in
+   * practice every caller (WorkflowExecutor.reservePerCategory()) passes
+   * exactly one input per call, one call per category, so this always
+   * reserves against a single well-defined category. That category is
+   * also this reservation's idempotency key together with productionId
+   * (see CreditLedger.reserve()'s doc comment) — a retried call for the
+   * same production and category returns the original reservation
+   * instead of reserving a second time.
    */
-  reserveForProduction(userId: UserId, productionId: ProductionId, inputs: CreditCalculationInput[]): CreditReservation {
+  reserveForProduction(userId: UserId, productionId: ProductionId, inputs: CreditCalculationInput[]): Promise<CreditReservation> {
     const results = this.calculator.calculateMany(inputs)
     const totalCredits = results.reduce((sum, r) => sum + r.credits, 0)
     return this.creditManager.reserve(
       userId,
       productionId,
       totalCredits,
+      inputs[0]?.category,
+      inputs[0]?.providerId,
       `Reservation for production "${productionId}" (${results.length} capabilities estimated)`
     )
   }
@@ -84,12 +98,12 @@ export class BillingEngine {
    * makes as work actually happens (e.g. once a scene's video comes
    * back), as opposed to reserveForProduction()'s up-front estimate.
    */
-  chargeUsage(
+  async chargeUsage(
     reservationId: string,
     userId: UserId,
     productionId: ProductionId,
     input: CreditCalculationInput
-  ): CreditTransactionRecord {
+  ): Promise<CreditTransactionRecord> {
     const result = this.calculator.calculate(input)
 
     this.usageTracker.record({
@@ -101,16 +115,16 @@ export class BillingEngine {
       creditsCharged: result.credits,
     })
 
-    return this.creditManager.consume(reservationId, result.credits, input.category, `${input.category} via ${input.providerId} (${result.note})`)
+    return this.creditManager.consume(reservationId, result.credits, `${input.category} via ${input.providerId} (${result.note})`)
   }
 
   /** Returns an entire unused reservation — e.g. the production was cancelled before any usage. */
-  releaseReservation(reservationId: string, reason?: string): CreditTransactionRecord {
+  releaseReservation(reservationId: string, reason?: string): Promise<CreditTransactionRecord> {
     return this.creditManager.release(reservationId, reason)
   }
 
   /** Returns credits after the fact, outside the reserve/consume flow. */
-  refund(userId: UserId, amount: number, productionId: ProductionId | undefined, reason: string): CreditTransactionRecord {
+  refund(userId: UserId, amount: number, productionId: ProductionId | undefined, reason: string): Promise<CreditTransactionRecord> {
     return this.creditManager.refund(userId, amount, productionId, reason)
   }
 
@@ -120,13 +134,15 @@ export class BillingEngine {
 }
 
 /**
- * Wires the default in-memory ledger, credit manager, usage tracker, and
- * calculator into a ready-to-use BillingEngine. No setup required — pass
- * an explicit ledger instead if a caller wants to share balances across
- * multiple BillingEngine instances (mirrors
+ * Wires a ready-to-use BillingEngine. Defaults to SupabaseCreditLedger —
+ * public.users.credits as the authoritative balance — not
+ * InMemoryCreditLedger: a production billing path must not depend on
+ * per-process memory (see CreditTransaction.ts's file header). Pass an
+ * explicit ledger for tests (InMemoryCreditLedger) or to share one ledger
+ * instance across multiple BillingEngine instances (mirrors
  * services/orchestrator/AIOrchestrator.ts's createDefaultAIOrchestrator()).
  */
-export function createDefaultBillingEngine(ledger: CreditLedger = new InMemoryCreditLedger()): BillingEngine {
+export function createDefaultBillingEngine(ledger: CreditLedger = new SupabaseCreditLedger()): BillingEngine {
   const creditManager = new CreditManager(ledger)
   const usageTracker = new UsageTracker()
   const calculator = new CreditCalculator()

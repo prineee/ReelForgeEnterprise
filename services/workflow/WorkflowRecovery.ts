@@ -96,7 +96,7 @@ export class WorkflowRecovery {
       if (reservation.settled) continue
 
       try {
-        const record = this.billing.releaseReservation(reservation.reservationId, decision.reason)
+        const record = await this.billing.releaseReservation(reservation.reservationId, decision.reason)
         next = withReservationSettled(next, reservation.reservationId, { consumed: 0, released: record.amount })
       } catch {
         // Already consumed elsewhere between the failure and this call — nothing further to release.
