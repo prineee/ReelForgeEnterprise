@@ -68,6 +68,15 @@ export async function GET(
   // before deciding "not found" is what keeps this check from silently
   // no-op'ing (and therefore not actually enforcing ownership) whenever
   // the poll lands on an instance that didn't create this production.
+  //
+  // context.userId is unset until runStoryPlanningStage() sets it — a
+  // production whose workflow died before reaching that stage (e.g. an
+  // InsufficientCreditsError during credit reservation) is a real,
+  // owned-in-spirit context with a still-undefined userId, not "someone
+  // else's production." Only reject when userId IS set and mismatches;
+  // an unset userId must fall through to getProgress() below so its
+  // owner can still see (and eventually, once failures are recorded
+  // there) the real status instead of a misleading "Unknown production."
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) {
@@ -75,7 +84,7 @@ export async function GET(
   }
   const repository = getSharedProductionContextRepository()
   const context = repository.get(productionId) ?? (await repository.getPersisted(productionId))
-  if (context && context.userId !== user.id) {
+  if (context && context.userId && context.userId !== user.id) {
     return NextResponse.json({ error: 'Unknown production.' }, { status: 404 })
   }
 

@@ -107,11 +107,14 @@ import type { ProductionContextRepository } from "./ProductionContextRepository"
 
 import { createWorkflowEngine } from "../workflow/WorkflowEngine";
 import type { WorkflowEngine } from "../workflow/WorkflowEngine";
+import { WorkflowEventType } from "../workflow/WorkflowEvents";
+import type { WorkflowEvent } from "../workflow/WorkflowEvents";
 import { QueueManager } from "../queue/QueueManager";
 import { createDefaultBillingEngine } from "../billing/BillingEngine";
 import type { BillingEngine } from "../billing/BillingEngine";
 import { createDefaultAIOrchestrator } from "../orchestrator/AIOrchestrator";
 import type { AIOrchestrator } from "../orchestrator/AIOrchestrator";
+import { ProductionStage } from "../ai/orchestration/MovieProductionContracts";
 
 // "gemini-2.5-flash" still appears in ListModels for this API key (ListModels
 // does not filter out models that have been sunset for new users), but
@@ -708,6 +711,62 @@ export function createMovieWorkflowEngine(config?: MovieProductionFactoryConfig)
       billingEngine: sharedBillingEngine,
       aiOrchestrator: sharedAIOrchestrator,
     });
+    sharedWorkflowEngine.on(WorkflowEventType.Failed, recordWorkflowFailureOnProductionContext);
+    sharedWorkflowEngine.on(WorkflowEventType.Cancelled, recordWorkflowFailureOnProductionContext);
   }
   return sharedWorkflowEngine;
+}
+
+/**
+ * Mirrors a terminal workflow failure onto ProductionContext, using
+ * WorkflowEngine's existing public event bus (WorkflowEngine.on()) —
+ * no change to WorkflowCoordinator/WorkflowEngine/WorkflowEvents was
+ * needed, since every terminal Failed/Cancelled event already carries the
+ * full WorkflowContext (including request.userId and the accumulated
+ * errors[]).
+ *
+ * Without this, a workflow that fails before runStoryPlanningStage() ever
+ * runs (ValidateRequest, ReserveCredits — e.g. InsufficientCreditsError,
+ * CreateWorkflow, CreateQueueJob) leaves its ProductionContext as a bare,
+ * unclaimed { productionId } shell forever: runStoryPlanningStage() is the
+ * only place a context.failure/userId gets written today, and it never
+ * runs for these earlier failures. getProgress() would then report that
+ * production as stuck QUEUED/0% indefinitely, with no way for its owner
+ * to learn why.
+ *
+ * `if (!context.failure)` is what keeps this a pure fallback: an AI-pipeline
+ * stage failure (e.g. Story Analysis itself failing) already has a more
+ * specific context.failure recorded by MovieProductionService's own stage
+ * methods by the time this fires, and that's left untouched. ProductionStage.
+ * StoryAnalysis is used as the recorded stage for pre-pipeline failures —
+ * there's no real ProductionStage for ValidateRequest/ReserveCredits/etc.
+ * (those are WorkflowStage, a different enum, modeling the surrounding
+ * workflow rather than the AI production pipeline), and StoryAnalysis is
+ * the first pipeline stage getProgress() reports on, so "failed before
+ * reaching Story Analysis" is fairly represented as failing there.
+ */
+async function recordWorkflowFailureOnProductionContext(event: WorkflowEvent): Promise<void> {
+  // WorkflowEventBus.emit() calls listeners synchronously and only guards
+  // against a *synchronous* throw (see WorkflowEvents.ts's safeNotify) — an
+  // async listener's rejection isn't awaited there, so it must be caught
+  // here instead. This is a best-effort mirror onto ProductionContext; the
+  // workflow's own failure is already recorded and logged by
+  // WorkflowCoordinator regardless of whether this succeeds, so a failure
+  // here is logged, not rethrown.
+  try {
+    const context = await sharedContextRepository.getOrCreate(event.context.id);
+    context.userId = event.context.request.userId;
+    if (!context.failure) {
+      context.failure = {
+        stage: ProductionStage.StoryAnalysis,
+        message: event.context.errors[event.context.errors.length - 1] ?? event.message,
+      };
+    }
+    await sharedContextRepository.save(context);
+  } catch (error) {
+    console.error(
+      `[MovieProductionFactory] Failed to record workflow failure onto ProductionContext "${event.context.id}":`,
+      error
+    );
+  }
 }
