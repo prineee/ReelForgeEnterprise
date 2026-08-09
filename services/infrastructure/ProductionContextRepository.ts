@@ -11,14 +11,37 @@
  * service built for an earlier request wrote — something two separate
  * instances holding their own private Maps could never do.
  *
- * InMemoryProductionContextRepository is an initial, in-memory-only
- * implementation. It does not persist across process restarts and does
- * not share state across multiple server processes/serverless instances —
- * a real (e.g. database-backed) implementation of ProductionContextRepository
- * can replace it later without changing MovieProductionService, since it
- * only depends on the interface.
+ * That sharing only works within one Node process, though. On Vercel,
+ * app/api/movie/create/route.ts and app/api/movie/status/[productionId]/
+ * route.ts are separate serverless functions with independent process
+ * memory, so a purely in-memory repository lets POST /api/movie/create
+ * "succeed" while every GET /api/movie/status/[productionId] 404s with
+ * "Unknown production." the moment it lands on a different instance than
+ * the one that created it. SupabaseProductionContextRepository (below)
+ * fixes that by durably persisting getOrCreate()/save() writes, while
+ * keeping the exact same interface get()/list() already use elsewhere
+ * (Character Studio, Scene Studio, Render Center, MovieCatalogService) —
+ * those callers are unaffected and keep reading the in-process cache only,
+ * same as before (see MovieCatalogService.ts's file header for why that
+ * remaining limitation is intentionally out of scope here).
+ *
+ * getOrCreate()/save() are Promise-returning because a real persistence
+ * write is inherently asynchronous; every existing caller of those two
+ * methods (MovieProductionService's stage methods and POST /api/movie/
+ * create) already runs inside an async function, so this did not require
+ * touching any unrelated caller. get()/list() stay synchronous, in-memory
+ * only — every one of their existing callers depends on that. getPersisted()
+ * is new: an async, database-backed read used only where a cross-instance
+ * read is actually required (status polling), so a cold instance can find
+ * a production a different instance created.
+ *
+ * InMemoryProductionContextRepository remains as the base, dependency-free
+ * implementation (e.g. for tests) — it does not persist across process
+ * restarts and does not share state across multiple server processes/
+ * serverless instances.
  */
 
+import { createAdminClient } from "@/lib/supabase/admin";
 import type { ProductionId, ProductionStage } from "../ai/orchestration/MovieProductionContracts";
 import type { MovieBlueprint } from "../ai/director/DirectorEngine";
 import type { SceneGenerationRequest } from "../ai/production/ScenePromptBuilder";
@@ -82,22 +105,31 @@ export interface ProductionContext {
 export interface ProductionContextRepository {
   /**
    * Returns the existing context for a productionId, or creates and stores
-   * a new empty one if none exists yet.
+   * a new empty one if none exists yet. Async so a database-backed
+   * implementation can durably persist the new context before this
+   * resolves — callers that need the id to be immediately visible to a
+   * different process (e.g. POST /api/movie/create, before it hands
+   * productionId back to the client) must await it.
    */
-  getOrCreate(productionId: ProductionId): ProductionContext;
+  getOrCreate(productionId: ProductionId): Promise<ProductionContext>;
 
   /**
-   * Returns the existing context for a productionId, or undefined if none
-   * exists.
+   * Returns the existing context for a productionId from the in-process
+   * cache only, or undefined if this process hasn't seen it. Stays
+   * synchronous because every existing caller (Character Studio, Scene
+   * Studio, Render Center, MovieCatalogService) depends on that — use
+   * getPersisted() instead where a cross-instance read is required.
    */
   get(productionId: ProductionId): ProductionContext | undefined;
 
   /**
    * Persists a context. Callers pass the full context object (typically
    * one previously obtained from getOrCreate/get and then mutated) after
-   * updating the field(s) they own.
+   * updating the field(s) they own. Async so a database-backed
+   * implementation's write can be awaited before the caller proceeds
+   * (e.g. before a stage moves on, or before a request handler responds).
    */
-  save(context: ProductionContext): void;
+  save(context: ProductionContext): Promise<void>;
 
   /**
    * Every stored context — the canonical enumeration this repository was
@@ -105,9 +137,21 @@ export interface ProductionContextRepository {
    * not by individual features directly, so every feature enumerates
    * movies through one shared filter (ownership, presence of a
    * movieBlueprint) instead of each re-deriving its own notion of "which
-   * movies exist."
+   * movies exist." In-process cache only, same scope as get() — see
+   * MovieCatalogService.ts's file header.
    */
   list(): ProductionContext[];
+
+  /**
+   * Returns the context for a productionId, falling back to durable
+   * storage (if the implementation has any) when the in-process cache
+   * doesn't have it — the read that makes cross-instance status polling
+   * work. Implementations with no durable backing (e.g.
+   * InMemoryProductionContextRepository) simply return the same result as
+   * get(). A hit here also warms the in-process cache, so a subsequent
+   * synchronous get() on the same (now-warm) instance succeeds too.
+   */
+  getPersisted(productionId: ProductionId): Promise<ProductionContext | undefined>;
 }
 
 declare global {
@@ -140,7 +184,7 @@ export class InMemoryProductionContextRepository implements ProductionContextRep
     this.contexts = globalThis.__productionContexts;
   }
 
-  getOrCreate(productionId: ProductionId): ProductionContext {
+  async getOrCreate(productionId: ProductionId): Promise<ProductionContext> {
     let context = this.contexts.get(productionId);
     if (!context) {
       context = { productionId };
@@ -153,11 +197,116 @@ export class InMemoryProductionContextRepository implements ProductionContextRep
     return this.contexts.get(productionId);
   }
 
-  save(context: ProductionContext): void {
+  async save(context: ProductionContext): Promise<void> {
     this.contexts.set(context.productionId, context);
   }
 
   list(): ProductionContext[] {
     return Array.from(this.contexts.values());
+  }
+
+  async getPersisted(productionId: ProductionId): Promise<ProductionContext | undefined> {
+    return this.contexts.get(productionId);
+  }
+}
+
+const PRODUCTION_CONTEXTS_TABLE = "movie_production_contexts";
+
+declare global {
+  // eslint-disable-next-line no-var
+  var __productionContextsRemoteCache: Map<ProductionId, ProductionContext> | undefined;
+}
+
+/**
+ * Database-backed ProductionContextRepository (Supabase, service-role
+ * client — see lib/supabase/admin.ts). Fixes the cross-serverless-instance
+ * "Unknown production." bug described in the file header: getOrCreate()
+ * and save() durably upsert into the movie_production_contexts table
+ * (supabase/migrations/20260809120000_movie_production_contexts.sql)
+ * before resolving, and getPersisted() reads that table when a productionId
+ * isn't in this instance's own in-process cache.
+ *
+ * get()/list() are intentionally unchanged from InMemoryProductionContextRepository
+ * — still a synchronous, in-process-only Map — because every existing
+ * caller of those two methods requires a synchronous return and only ever
+ * reads productions this same instance already touched (see file header).
+ * The Map is anchored on globalThis for the same reason
+ * InMemoryProductionContextRepository's is: it survives Next.js dev-mode
+ * module reloads without losing in-flight state, while still resetting on
+ * a genuine process restart (the database is the actual source of truth
+ * across restarts/instances, not this cache).
+ */
+export class SupabaseProductionContextRepository implements ProductionContextRepository {
+  private readonly contexts: Map<ProductionId, ProductionContext>;
+
+  constructor() {
+    if (!globalThis.__productionContextsRemoteCache) {
+      globalThis.__productionContextsRemoteCache = new Map<ProductionId, ProductionContext>();
+    }
+    this.contexts = globalThis.__productionContextsRemoteCache;
+  }
+
+  get(productionId: ProductionId): ProductionContext | undefined {
+    return this.contexts.get(productionId);
+  }
+
+  list(): ProductionContext[] {
+    return Array.from(this.contexts.values());
+  }
+
+  async getOrCreate(productionId: ProductionId): Promise<ProductionContext> {
+    const existing = this.contexts.get(productionId);
+    if (existing) return existing;
+
+    const context: ProductionContext = { productionId };
+    this.contexts.set(productionId, context);
+    await this.persist(context);
+    return context;
+  }
+
+  async save(context: ProductionContext): Promise<void> {
+    this.contexts.set(context.productionId, context);
+    await this.persist(context);
+  }
+
+  async getPersisted(productionId: ProductionId): Promise<ProductionContext | undefined> {
+    const cached = this.contexts.get(productionId);
+    if (cached) return cached;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = (await (createAdminClient() as any)
+      .from(PRODUCTION_CONTEXTS_TABLE)
+      .select("context")
+      .eq("production_id", productionId)
+      .maybeSingle()) as { data: { context: ProductionContext } | null; error: { message: string } | null };
+
+    if (error || !data) return undefined;
+
+    this.contexts.set(productionId, data.context);
+    return data.context;
+  }
+
+  /**
+   * Upserts the full context as-is into the `context` JSONB column —
+   * postgrest-js serializes the plain object directly, no manual
+   * JSON.stringify needed. Throws (rather than swallowing) on failure so a
+   * durability problem surfaces as a clear error to the caller (e.g. POST
+   * /api/movie/create returning 500) instead of silently reintroducing the
+   * cross-instance "Unknown production." bug this class exists to fix.
+   */
+  private async persist(context: ProductionContext): Promise<void> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (createAdminClient() as any).from(PRODUCTION_CONTEXTS_TABLE).upsert({
+      production_id: context.productionId,
+      user_id: context.userId ?? null,
+      context,
+      updated_at: new Date().toISOString(),
+    });
+
+    if (error) {
+      throw new Error(
+        `SupabaseProductionContextRepository: failed to persist production "${context.productionId}": ${error.message}`
+      );
+    }
   }
 }

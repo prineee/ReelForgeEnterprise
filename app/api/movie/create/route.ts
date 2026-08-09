@@ -76,17 +76,20 @@ export async function POST(req: Request) {
     // the workflow was never observed advancing past Story Analysis.
     after(completion)
 
-    // Create the initial ProductionContext synchronously, right here, in
-    // the same request that generated productionId — not inside the async
-    // pipeline (runStoryPlanningStage(), which only runs once the Queue
-    // ticks the job in the background). This is what lets an immediate
-    // GET /api/movie/status/[workflowId] find a context instead of 404ing.
+    // Create the initial ProductionContext right here, in the same request
+    // that generated productionId — not inside the async pipeline
+    // (runStoryPlanningStage(), which only runs once the Queue ticks the
+    // job in the background). Awaited so the durable row actually exists
+    // (see SupabaseProductionContextRepository) before this response goes
+    // out — GET /api/movie/status/[workflowId] can land on a different
+    // serverless instance immediately after, so it must find this via a
+    // real read, not a same-process cache that instance never populated.
     // getOrCreate() is idempotent on the same shared repository
     // runStoryPlanningStage() already uses, so when that stage later calls
     // getOrCreate(request.productionId) it retrieves this exact object
     // rather than creating a second one — no new repository, no duplicate
     // state, no Story Planning/Gemini work triggered here.
-    getSharedProductionContextRepository().getOrCreate(workflowId)
+    await getSharedProductionContextRepository().getOrCreate(workflowId)
 
     const context = engine.getWorkflow(workflowId)
 

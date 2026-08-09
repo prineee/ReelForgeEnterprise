@@ -61,12 +61,20 @@ export async function GET(
   // match the requesting user, the same field MovieCatalogService's
   // enumeration already scopes by (Sprint 16, Task 3), so a productionId
   // can't be used to poll another user's production status.
+  //
+  // get() only checks this instance's in-process cache, so on a cold
+  // instance it misses even for a real, owned production — falling
+  // through to getPersisted() (same fallback getProgress() below uses)
+  // before deciding "not found" is what keeps this check from silently
+  // no-op'ing (and therefore not actually enforcing ownership) whenever
+  // the poll lands on an instance that didn't create this production.
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  const context = getSharedProductionContextRepository().get(productionId)
+  const repository = getSharedProductionContextRepository()
+  const context = repository.get(productionId) ?? (await repository.getPersisted(productionId))
   if (context && context.userId !== user.id) {
     return NextResponse.json({ error: 'Unknown production.' }, { status: 404 })
   }

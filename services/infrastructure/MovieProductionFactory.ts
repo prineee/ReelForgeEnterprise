@@ -102,7 +102,7 @@ import { ProviderRegistry, createDefaultProviderRegistry } from "../rendering/Pr
 import { RenderDecisionEngine } from "../rendering/decision/RenderDecisionEngine";
 
 import { MovieProductionService } from "../ai/orchestration/MovieProductionService";
-import { InMemoryProductionContextRepository } from "./ProductionContextRepository";
+import { SupabaseProductionContextRepository } from "./ProductionContextRepository";
 import type { ProductionContextRepository } from "./ProductionContextRepository";
 
 import { createWorkflowEngine } from "../workflow/WorkflowEngine";
@@ -525,8 +525,15 @@ class GeminiLanguageModelProvider implements LanguageModelProvider {
  * MovieProductionService instance built for a later request (e.g. a future
  * GET /api/movie/status) see the same production state — createMovieProductionService()
  * is called fresh per request, but this repository is not.
+ *
+ * SupabaseProductionContextRepository, not InMemoryProductionContextRepository:
+ * on Vercel, "a later request" above is frequently a *different serverless
+ * function instance* than the one that handled creation (see
+ * ProductionContextRepository.ts's file header) — an in-memory-only
+ * repository can't make status polling work across that boundary, only
+ * a durably-persisted one can.
  */
-const sharedContextRepository: ProductionContextRepository = new InMemoryProductionContextRepository();
+const sharedContextRepository: ProductionContextRepository = new SupabaseProductionContextRepository();
 
 /**
  * Exposes the same sharedContextRepository singleton used by every

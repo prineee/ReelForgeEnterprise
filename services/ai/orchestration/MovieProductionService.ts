@@ -273,7 +273,12 @@ export class MovieProductionService {
    * determined.
    */
   async getProgress(productionId: ProductionId): Promise<ProductionProgress> {
-    const context = this.contextRepository.get(productionId);
+    // get() only checks this instance's in-process cache — on Vercel, the
+    // instance serving this status poll is frequently not the one that
+    // handled creation (or an earlier stage write), so a miss here falls
+    // back to getPersisted()'s database read before concluding the
+    // production genuinely doesn't exist.
+    const context = this.contextRepository.get(productionId) ?? (await this.contextRepository.getPersisted(productionId));
     if (!context) {
       throw new MovieProductionServiceError(`No production found for productionId "${productionId}".`);
     }
@@ -367,9 +372,9 @@ export class MovieProductionService {
     // createMovieBlueprint() finishes. getOrCreate() is idempotent — the
     // second call below (once the blueprint is ready) returns this exact
     // same stored context rather than creating a duplicate.
-    const initialContext = this.contextRepository.getOrCreate(request.productionId);
+    const initialContext = await this.contextRepository.getOrCreate(request.productionId);
     initialContext.userId = request.userId;
-    this.contextRepository.save(initialContext);
+    await this.contextRepository.save(initialContext);
 
     let blueprint: MovieBlueprint;
     try {
@@ -390,9 +395,9 @@ export class MovieProductionService {
       // so getProgress() reports FAILED/StoryAnalysis/message instead of
       // leaving the dashboard reading QUEUED/0% forever — getOrCreate() is
       // idempotent and returns the same context registered above.
-      const failedContext = this.contextRepository.getOrCreate(request.productionId);
+      const failedContext = await this.contextRepository.getOrCreate(request.productionId);
       failedContext.failure = { stage: ProductionStage.StoryAnalysis, message };
-      this.contextRepository.save(failedContext);
+      await this.contextRepository.save(failedContext);
 
       throw new MovieProductionServiceError(
         `Story planning failed for production "${request.productionId}": ${message}`,
@@ -402,9 +407,9 @@ export class MovieProductionService {
 
     // TEMPORARY DIAGNOSTIC — trace only.
     console.log(`[TRACE][StoryAnalysis] before updating ProductionContext. productionId="${request.productionId}"`);
-    const context = this.contextRepository.getOrCreate(request.productionId);
+    const context = await this.contextRepository.getOrCreate(request.productionId);
     context.movieBlueprint = blueprint;
-    this.contextRepository.save(context);
+    await this.contextRepository.save(context);
     // TEMPORARY DIAGNOSTIC — trace only.
     console.log(
       `[TRACE][StoryAnalysis] after updating ProductionContext. productionId="${request.productionId}", ` +
@@ -534,7 +539,7 @@ export class MovieProductionService {
     }
 
     context.uploadedReferenceAssets = uploadedAssets;
-    this.contextRepository.save(context);
+    await this.contextRepository.save(context);
 
     const completedAt = new Date().toISOString();
 
@@ -646,7 +651,7 @@ export class MovieProductionService {
     }
 
     context.sceneGenerationRequests = requests;
-    this.contextRepository.save(context);
+    await this.contextRepository.save(context);
 
     const completedAt = new Date().toISOString();
 
@@ -697,7 +702,7 @@ export class MovieProductionService {
     }
 
     context.generatedVideos = videos;
-    this.contextRepository.save(context);
+    await this.contextRepository.save(context);
 
     const completedAt = new Date().toISOString();
 
@@ -818,7 +823,7 @@ export class MovieProductionService {
     }
 
     context.movieAssembly = assemblyResult;
-    this.contextRepository.save(context);
+    await this.contextRepository.save(context);
 
     const completedAt = new Date().toISOString();
 
@@ -879,7 +884,7 @@ export class MovieProductionService {
     }
 
     context.finalRenderPlan = renderPlan;
-    this.contextRepository.save(context);
+    await this.contextRepository.save(context);
 
     const completedAt = new Date().toISOString();
 
