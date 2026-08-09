@@ -71,6 +71,79 @@ const VALID_CAMERA_HEIGHTS = new Set<string>(Object.values(CameraHeightEnum));
 const VALID_TRANSITIONS = new Set<string>(Object.values(SceneTransitionEnum));
 
 /**
+ * Legitimate cinematography terms Gemini reliably produces despite
+ * buildPrompt() explicitly listing VALID_MOVEMENTS as the allowed set —
+ * "tracking shot" in particular is one of the most standard terms in
+ * filmmaking, so telling the model to pick from a fixed list doesn't stop
+ * it from using this vocabulary anyway (observed directly in production —
+ * see CameraPlanParseError "Missing or invalid movement field" incidents).
+ *
+ * Each synonym maps to the CANONICAL CameraMovement value used when the
+ * response gives no direction; `out` is used only when a direction token
+ * ("IN"/"OUT") is present in the raw value itself (see resolveDirection()
+ * below) — never inferred from unrelated fields like `angle` (a tilt/pitch
+ * angle relative to eye level per buildPrompt(), not a movement direction;
+ * using it to guess DOLLY_IN vs DOLLY_OUT would be fabricating a meaning
+ * that field doesn't actually carry).
+ *
+ * These are the only three synonyms handled — see the file-level
+ * requirement to normalize legitimate vocabulary without making
+ * validation permissive for arbitrary values. TRACKING_SHOT's closest
+ * canonical sibling is DOLLY_IN/DOLLY_OUT (physical camera movement)
+ * rather than PAN_LEFT/PAN_RIGHT (rotational, stationary camera) — a
+ * tracking shot physically moves the camera, a pan does not. Confirmed
+ * against every real downstream consumer of CameraMovement
+ * (PromptComposer.ts, DirectorProfile.ts, ShotLibrary.ts) — none of them
+ * do their own parsing of the raw movement string; they only ever consume
+ * the already-typed, already-canonical CameraPlan.movement value this
+ * function guarantees, so none needed changes.
+ */
+const MOVEMENT_SYNONYMS: Record<string, { in: CameraMovement; out: CameraMovement }> = {
+  TRACKING_SHOT: { in: CameraMovementEnum.DollyIn, out: CameraMovementEnum.DollyOut },
+  SLOW_ZOOM: { in: CameraMovementEnum.ZoomIn, out: CameraMovementEnum.ZoomOut },
+  DOLLY_ZOOM: { in: CameraMovementEnum.DollyIn, out: CameraMovementEnum.DollyOut },
+};
+
+/**
+ * Normalizes a raw movement value from the language model into a
+ * canonical CameraMovement, or returns undefined if it's neither an exact
+ * (case/format-insensitive) canonical value nor a known synonym — callers
+ * must still reject undefined clearly, not substitute a silent default.
+ *
+ * Pure and side-effect-free: same input always produces the same output,
+ * no I/O, no mutation. Casing/whitespace/hyphen variation is normalized
+ * uniformly for both canonical values and synonyms (e.g. "tracking_shot",
+ * "TRACKING_SHOT", and "TRACKING SHOT" all resolve identically) — already-
+ * canonical values pass through completely unchanged in both value and
+ * case handling, since the exact-match fast path returns the normalized
+ * (uppercased) form, which for a value already given in canonical
+ * (uppercase, underscored) form is identical to the input.
+ *
+ * A trailing "_IN"/"_OUT" token on a synonym (e.g. "TRACKING_SHOT_OUT")
+ * selects that direction explicitly; otherwise the synonym's documented
+ * conservative default applies. This never fabricates a direction from
+ * unrelated fields — only an explicit token in the movement string itself.
+ */
+export function normalizeCameraMovement(rawValue: unknown): CameraMovement | undefined {
+  if (typeof rawValue !== "string") return undefined;
+
+  const cleaned = rawValue.trim().toUpperCase().replace(/[\s-]+/g, "_");
+  if (VALID_MOVEMENTS.has(cleaned)) {
+    return cleaned as CameraMovement;
+  }
+
+  const tokens = cleaned.split("_").filter(Boolean);
+  const lastToken = tokens[tokens.length - 1];
+  const hasDirectionToken = lastToken === "IN" || lastToken === "OUT";
+  const baseKey = (hasDirectionToken ? tokens.slice(0, -1) : tokens).join("_");
+
+  const synonym = MOVEMENT_SYNONYMS[baseKey];
+  if (!synonym) return undefined;
+
+  return lastToken === "OUT" ? synonym.out : synonym.in;
+}
+
+/**
  * Plans one camera setup per scene of a StoryBlueprint by delegating
  * language generation to an injected LanguageModelProvider. Populates
  * OutputSchema v2's typed CameraPlan fields directly — framing, lighting,
@@ -220,7 +293,18 @@ export class CameraDirector {
       id: this.generateCameraPlanId(sceneNumber, usedIds),
       sceneNumber,
       shot: this.expectEnum(raw.shot, VALID_SHOTS, "shot", rawResponse) as CameraShot,
-      movement: this.expectEnum(raw.movement, VALID_MOVEMENTS, "movement", rawResponse) as CameraMovement,
+      // Normalize legitimate cinematography synonyms (e.g. "TRACKING_SHOT")
+      // to their canonical CameraMovement before validating — see
+      // normalizeCameraMovement()'s doc comment. Falls back to the
+      // original raw value when normalization can't resolve it, so
+      // genuinely invalid input still fails expectEnum() with the exact
+      // same "Missing or invalid movement field" error as before.
+      movement: this.expectEnum(
+        normalizeCameraMovement(raw.movement) ?? raw.movement,
+        VALID_MOVEMENTS,
+        "movement",
+        rawResponse
+      ) as CameraMovement,
       angle: this.expectNumber(raw.angle, "angle", rawResponse),
       lens: this.expectString(raw.lens, "lens", rawResponse),
       framing: this.expectString(raw.framing, "framing", rawResponse),
