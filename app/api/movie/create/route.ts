@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto'
 import { NextResponse, after } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import {
@@ -7,6 +8,21 @@ import {
 
 const MIN_IDEA_LENGTH = 10
 const MAX_IDEA_LENGTH = 5000
+
+/**
+ * 'vercel' (default): today's in-process path — runs the whole pipeline
+ * inside this request via after(completion), bounded by maxDuration below.
+ * 'railway': hands the job to the Railway worker's movie-production BullMQ
+ * queue instead (see worker/src/routes/movieProductionRoutes.js) — no
+ * execution-time ceiling there, and it's also where the real FFmpeg
+ * merge + Cloudinary upload step lives (movieProductionRenderer.js),
+ * which this in-process path never runs at all.
+ *
+ * Kept as an explicit env-gated fork rather than replacing the vercel path
+ * outright: flipping this back to 'vercel' is the entire rollback if the
+ * Railway path needs to be backed out, no code revert required.
+ */
+const MOVIE_EXECUTION_MODE = process.env.MOVIE_EXECUTION_MODE === 'railway' ? 'railway' : 'vercel'
 
 // after(completion) below keeps this invocation alive to run the background
 // pipeline to completion, but it is still bounded by this route's own
@@ -62,6 +78,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Invalid request.' }, { status: 400 })
   }
 
+  if (MOVIE_EXECUTION_MODE === 'railway') {
+    return startOnRailway(user.id, idea)
+  }
+
   // 3. const engine = createMovieWorkflowEngine();
   let engine: ReturnType<typeof createMovieWorkflowEngine>
   try {
@@ -110,6 +130,53 @@ export async function POST(req: Request) {
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to start workflow.'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+/**
+ * The MOVIE_EXECUTION_MODE=railway path. Creates productionId and its
+ * initial ProductionContext here (same as the vercel path above, and for
+ * the same reason — GET /api/movie/status/[productionId] must find a row
+ * immediately, possibly from a different serverless instance), then hands
+ * off to the worker instead of running the pipeline in this process.
+ * Response shape matches the vercel path exactly — nothing downstream of
+ * this route needs to know which mode created a given production.
+ */
+async function startOnRailway(userId: string, userIdea: string): Promise<NextResponse> {
+  const productionId = randomUUID()
+
+  try {
+    await getSharedProductionContextRepository().getOrCreate(productionId)
+
+    const workerUrl = process.env.NEXT_PUBLIC_WORKER_URL
+    if (!workerUrl) {
+      return NextResponse.json({ error: 'NEXT_PUBLIC_WORKER_URL is not configured.' }, { status: 500 })
+    }
+
+    const response = await fetch(`${workerUrl}/api/movie/enqueue`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ productionId, userId, userIdea }),
+    })
+
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '')
+      return NextResponse.json(
+        { error: `Worker enqueue failed (${response.status}): ${detail.slice(0, 300)}` },
+        { status: 502 }
+      )
+    }
+
+    return NextResponse.json({
+      success: true,
+      productionId,
+      workflowId: productionId,
+      status: 'CREATED',
+      currentStage: null,
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to enqueue workflow.'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

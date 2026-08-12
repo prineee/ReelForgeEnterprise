@@ -2,6 +2,7 @@
 
 require('dotenv').config()
 const movieRenderRoutes = require('./routes/movieRenderRoutes')
+const movieProductionRoutes = require('./routes/movieProductionRoutes')
 const express       = require('express')
 const reelRoutes            = require('./routes/reelRoutes')
 const cartoonRoutes         = require('./routes/cartoonRoutes')
@@ -54,6 +55,9 @@ app.use('/', reelRoutes)
 app.use('/', cartoonRoutes)
 app.use('/', cartoonDialogueRoutes)
 app.use('/', lipSyncRoutes)
+// Mounted after express.json() (unlike movieRenderRoutes above, which is
+// mounted before it) so req.body is actually parsed for this route.
+app.use('/', movieProductionRoutes)
 
 // ── 404 / error fallbacks ─────────────────────────────────────────────────────
 app.use((_req, res) => res.status(404).json({ error: 'Not found' }))
@@ -67,6 +71,7 @@ app.listen(PORT, () => {
   console.log(`\nReelForge worker listening on :${PORT}`)
   console.log(`  POST /api/generate-video         — SSE video generation`)
   console.log(`  POST /api/generate-movie-scenes  — SSE scene generation`)
+  console.log(`  POST /api/movie/enqueue          — enqueue a Movie Studio production`)
   console.log(`  GET  /api/queue/status           — queue stats`)
   console.log(`  GET  /health                     — health check\n`)
 
