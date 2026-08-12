@@ -20,8 +20,8 @@ import type { OrchestrationPlan, OrchestrationRequest } from './OrchestratorType
 import { ProviderSelector } from './ProviderSelector'
 import { CostEstimator } from './CostEstimator'
 import { GenerationEstimator } from './GenerationEstimator'
-import { InMemoryProviderRegistry } from './ProviderRegistry'
-import type { ProviderRegistry } from './ProviderRegistry'
+import { InMemoryProviderCostRegistry } from './ProviderRegistry'
+import type { ProviderCostRegistry } from './ProviderRegistry'
 import { InMemoryProviderHealthMonitor } from './ProviderHealth'
 import type { ProviderHealthMonitor } from './ProviderHealth'
 
@@ -83,7 +83,7 @@ export class AIOrchestrator {
 }
 
 /**
- * Wires the default in-memory ProviderRegistry + ProviderHealthMonitor
+ * Wires the default in-memory ProviderCostRegistry + ProviderHealthMonitor
  * into a ready-to-use AIOrchestrator. No credentials or SDKs required —
  * everything here is placeholder metadata and pure math, so this can be
  * called from anywhere (a route, a script, a future factory) without any
@@ -92,7 +92,7 @@ export class AIOrchestrator {
  * health-check job) across multiple orchestrator instances.
  */
 export function createDefaultAIOrchestrator(
-  registry: ProviderRegistry = new InMemoryProviderRegistry(),
+  registry: ProviderCostRegistry = new InMemoryProviderCostRegistry(),
   health: ProviderHealthMonitor = new InMemoryProviderHealthMonitor()
 ): AIOrchestrator {
   const costEstimator = new CostEstimator(registry)

@@ -4,7 +4,7 @@
  * Estimates AI cost before a production begins: how many units of each
  * capability (story planning, character images, scene images, videos,
  * voice, rendering, storage) the request will need, and what that costs on
- * a given provider. Pure math over ProviderRegistry data — no network
+ * a given provider. Pure math over ProviderCostRegistry data — no network
  * calls, no SDKs.
  *
  * deriveCapabilityUnits() is the one piece of sizing logic both
@@ -15,7 +15,7 @@
 
 import type { ExpectedCost, OrchestrationRequest, ProviderId, ProviderSelection, CostBreakdownEntry, CostEstimate } from './OrchestratorTypes'
 import { AICapability } from './OrchestratorTypes'
-import type { ProviderRegistry } from './ProviderRegistry'
+import type { ProviderCostRegistry } from './ProviderRegistry'
 
 export class CostEstimatorError extends Error {
   constructor(message: string) {
@@ -60,7 +60,7 @@ export function deriveCapabilityUnits(request: OrchestrationRequest): Partial<Re
 }
 
 export class CostEstimator {
-  constructor(private readonly registry: ProviderRegistry) {}
+  constructor(private readonly registry: ProviderCostRegistry) {}
 
   /** Cost of `units` of `capability` on a specific provider, quality-adjusted. */
   estimateForProvider(

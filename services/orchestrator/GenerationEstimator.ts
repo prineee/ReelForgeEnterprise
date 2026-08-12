@@ -3,7 +3,7 @@
  *
  * Estimates how long a production will take before it begins: total
  * runtime, per-scene runtime, queue delay from productions ahead of it,
- * and an expected completion timestamp. Pure math over ProviderRegistry
+ * and an expected completion timestamp. Pure math over ProviderCostRegistry
  * speed profiles — no network calls, no timers, no polling.
  *
  * Stage order mirrors the real pipeline's sequential stages
@@ -15,7 +15,7 @@
 
 import type { GenerationBreakdownEntry, GenerationEstimate, OrchestrationRequest, ProviderId, ProviderSelection } from './OrchestratorTypes'
 import { AICapability } from './OrchestratorTypes'
-import type { ProviderRegistry } from './ProviderRegistry'
+import type { ProviderCostRegistry } from './ProviderRegistry'
 import { QUALITY_MULTIPLIER, deriveCapabilityUnits } from './CostEstimator'
 
 export class GenerationEstimatorError extends Error {
@@ -33,7 +33,7 @@ export class GenerationEstimatorError extends Error {
 const ASSUMED_SECONDS_PER_QUEUED_PRODUCTION = 20 * 60
 
 export class GenerationEstimator {
-  constructor(private readonly registry: ProviderRegistry) {}
+  constructor(private readonly registry: ProviderCostRegistry) {}
 
   /** Seconds to produce `units` of `capability` on a specific provider, quality-adjusted, accounting for concurrency. */
   estimateForProvider(

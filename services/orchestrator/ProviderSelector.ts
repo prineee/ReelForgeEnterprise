@@ -3,7 +3,7 @@
  *
  * Given a production request, decides which provider should handle each
  * capability it needs: story generation, character/scene images, video,
- * voice, rendering, storage. Filters candidates by ProviderRegistry
+ * voice, rendering, storage. Filters candidates by ProviderCostRegistry
  * availability and ProviderHealth usability, then ranks the survivors by
  * the request's priority. No network calls — this only reads registry
  * metadata and calls CostEstimator/GenerationEstimator's pure math.
@@ -11,7 +11,7 @@
 
 import type { OrchestrationRequest, ProviderRegistryEntry, ProviderSelection } from './OrchestratorTypes'
 import { AICapability } from './OrchestratorTypes'
-import type { ProviderRegistry } from './ProviderRegistry'
+import type { ProviderCostRegistry } from './ProviderRegistry'
 import { ProviderAvailability } from './OrchestratorTypes'
 import type { ProviderHealthMonitor } from './ProviderHealth'
 import { CostEstimator, deriveCapabilityUnits } from './CostEstimator'
@@ -33,7 +33,7 @@ interface Candidate {
 
 export class ProviderSelector {
   constructor(
-    private readonly registry: ProviderRegistry,
+    private readonly registry: ProviderCostRegistry,
     private readonly health: ProviderHealthMonitor,
     private readonly costEstimator: CostEstimator,
     private readonly generationEstimator: GenerationEstimator

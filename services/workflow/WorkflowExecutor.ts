@@ -52,6 +52,7 @@ import type { CreditReservation } from '../billing/BillingTypes'
 import { UsageCategory } from '../billing/BillingTypes'
 
 import type { AIOrchestrator } from '../orchestrator/AIOrchestrator'
+import { resolveActiveVideoProviderId } from '../rendering/ProviderCapabilities'
 
 import type { WorkflowContext, WorkflowReservation } from './WorkflowContext'
 import { WorkflowStage } from './WorkflowState'
@@ -151,10 +152,20 @@ export class WorkflowExecutor {
    * since each call is independently atomic.
    */
   private async reservePerCategory(context: WorkflowContext, sceneCount: number, characterCount: number): Promise<WorkflowReservation[]> {
+    // Videos' providerId is resolved dynamically (VGE-01), not a hardcoded
+    // literal like every other category here — this codebase can execute
+    // a video generation through either GOOGLE or LTX (selected by
+    // VIDEO_PROVIDER), and billing needs to reflect whichever one will
+    // actually run, not always claim it was Veo. The other four
+    // categories (Story/Images/Voice/Rendering) each really do have
+    // exactly one real provider today, so a fixed literal stays correct
+    // for them — see CreditCalculator.ts's PROVIDER_MULTIPLIER for the
+    // corresponding pricing-side fix.
+    const videoProviderId = resolveActiveVideoProviderId()
     const plan: { label: string; category: UsageCategory; providerId: string; extra?: Record<string, number> }[] = [
       { label: 'Story Generation', category: UsageCategory.StoryGeneration, providerId: 'GEMINI' },
       { label: 'Images', category: UsageCategory.Images, providerId: 'IMAGEN', extra: { imageCount: characterCount } },
-      { label: 'Videos', category: UsageCategory.Videos, providerId: 'VEO', extra: { sceneCount } },
+      { label: 'Videos', category: UsageCategory.Videos, providerId: videoProviderId, extra: { sceneCount } },
       { label: 'Voice', category: UsageCategory.Voice, providerId: 'ELEVENLABS', extra: { sceneCount } },
       { label: 'Rendering', category: UsageCategory.Rendering, providerId: 'CLOUDINARY' },
     ]

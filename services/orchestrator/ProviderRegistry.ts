@@ -10,15 +10,24 @@
  * this registry rather than hardcoding provider facts themselves, which is
  * what lets a provider be added, repriced, or swapped without touching
  * MovieProductionService or any other consumer of this module.
+ *
+ * Named ProviderCostRegistry (not ProviderRegistry) as of VGE-01: this
+ * module and services/rendering/ProviderRegistry.ts used to both export a
+ * class/interface named `ProviderRegistry`, despite modeling unrelated
+ * things (this one is cost/speed *planning* metadata; the rendering one is
+ * the *live execution* registry of real RenderProvider instances, keyed by
+ * a completely different ProviderId union). services/rendering/ProviderRegistry.ts
+ * is the one callers actually depend on at runtime, so it kept the name;
+ * this file's exports were renamed instead.
  */
 
 import type { ProviderCapabilityProfile, ProviderId, ProviderRegistryEntry } from './OrchestratorTypes'
 import { AICapability, ProviderAvailability } from './OrchestratorTypes'
 
-export class ProviderRegistryError extends Error {
+export class ProviderCostRegistryError extends Error {
   constructor(message: string) {
     super(message)
-    this.name = 'ProviderRegistryError'
+    this.name = 'ProviderCostRegistryError'
   }
 }
 
@@ -94,7 +103,7 @@ const PLANNED_PROVIDERS: ProviderRegistryEntry[] = [
   { id: 'ANTHROPIC', displayName: 'Anthropic', status: ProviderAvailability.Planned, capabilities: {} },
 ]
 
-export interface ProviderRegistry {
+export interface ProviderCostRegistry {
   register(entry: ProviderRegistryEntry): void
   get(providerId: ProviderId): ProviderRegistryEntry
   has(providerId: ProviderId): boolean
@@ -104,7 +113,7 @@ export interface ProviderRegistry {
 }
 
 /** In-memory registry, pre-seeded with every active and planned provider. */
-export class InMemoryProviderRegistry implements ProviderRegistry {
+export class InMemoryProviderCostRegistry implements ProviderCostRegistry {
   private readonly entries = new Map<ProviderId, ProviderRegistryEntry>()
 
   constructor(seed: ProviderRegistryEntry[] = [...ACTIVE_PROVIDERS, ...PLANNED_PROVIDERS]) {
@@ -120,7 +129,7 @@ export class InMemoryProviderRegistry implements ProviderRegistry {
   get(providerId: ProviderId): ProviderRegistryEntry {
     const entry = this.entries.get(providerId)
     if (!entry) {
-      throw new ProviderRegistryError(`No provider registered for id "${providerId}".`)
+      throw new ProviderCostRegistryError(`No provider registered for id "${providerId}".`)
     }
     return entry
   }

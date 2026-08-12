@@ -17,6 +17,15 @@
  * providers/future/) that exists so the full roster is addressable today
  * even though only two ids currently do real work — see
  * docs/architecture/render-orchestrator.md.
+ *
+ * This is the ONE canonical ProviderRegistry (VGE-01): a same-named class
+ * in services/orchestrator/ProviderRegistry.ts used to collide with this
+ * one despite modeling something unrelated (cost-planning metadata, not
+ * live execution) — that file's exports were renamed to ProviderCostRegistry
+ * to resolve it. getDescriptor()/listAvailable()/resolveId() below add the
+ * declarative capability/pricing/availability model
+ * (ProviderCapabilities.ts) onto this registry without changing
+ * register()/resolve()/has()/list()'s existing behavior at all.
  */
 
 import type { ProviderId, RenderProvider } from "./interfaces/RenderProvider";
@@ -27,8 +36,17 @@ import { GPUClusterProvider } from "./providers/gpu/GPUClusterProvider";
 import { WanProvider } from "./providers/future/WanProvider";
 import { HunyuanProvider } from "./providers/future/HunyuanProvider";
 import { CogVideoProvider } from "./providers/future/CogVideoProvider";
+import type { ProviderDescriptor } from "./ProviderCapabilities";
+import { PROVIDER_DESCRIPTORS, normalizeProviderId } from "./ProviderCapabilities";
 
 type RenderProviderFactory = () => RenderProvider;
+
+export class UnknownProviderError extends Error {
+  constructor(raw: string) {
+    super(`"${raw}" is not a known provider id.`);
+    this.name = "UnknownProviderError";
+  }
+}
 
 export class ProviderRegistry {
   private readonly factories = new Map<ProviderId, RenderProviderFactory>();
@@ -61,6 +79,41 @@ export class ProviderRegistry {
 
   list(): ProviderId[] {
     return Array.from(this.factories.keys());
+  }
+
+  /**
+   * Normalizes a possibly loosely-cased id (e.g. from an API request body
+   * or an env var) into a real ProviderId, throwing UnknownProviderError
+   * rather than silently falling through to a default — VGE-01's provider
+   * foundation is meant to make an unrecognized provider a loud failure,
+   * not a quiet no-op, since a caller that meant "GOOGLE" but typo'd
+   * "GOOLGE" should not silently get whatever the fallback provider is.
+   */
+  resolveId(raw: string): ProviderId {
+    const id = normalizeProviderId(raw);
+    if (!id) {
+      throw new UnknownProviderError(raw);
+    }
+    return id;
+  }
+
+  /**
+   * The declarative capability/pricing/availability descriptor for `id` —
+   * see ProviderCapabilities.ts. Independent of whether a real
+   * RenderProvider factory is registered for `id` in *this* registry
+   * instance (register()/resolve() above) — a descriptor describes what a
+   * provider *can* do; register()/resolve() describe what *this process*
+   * currently has wired up to actually do it. The two normally agree, but
+   * querying capabilities never requires constructing (or crediting) a
+   * real provider instance.
+   */
+  getDescriptor(id: ProviderId): ProviderDescriptor {
+    return PROVIDER_DESCRIPTORS[id];
+  }
+
+  /** Every descriptor whose availability is ProviderAvailabilityStatus.Available. */
+  listAvailable(): ProviderDescriptor[] {
+    return Object.values(PROVIDER_DESCRIPTORS).filter((d) => d.availability === "AVAILABLE");
   }
 }
 

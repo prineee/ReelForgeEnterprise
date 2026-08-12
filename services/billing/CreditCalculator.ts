@@ -21,9 +21,27 @@
  * Any provider *not* in that union — a brand-new one, or a typo — still
  * prices correctly via DEFAULT_PROVIDER_MULTIPLIER, which is what makes
  * this calculator provider-independent rather than provider-locked.
+ *
+ * VGE-01 fix: PROVIDER_MULTIPLIER's keys used to be typed against only the
+ * orchestrator's (planning-layer) ProviderId — GEMINI/IMAGEN/VEO/etc. —
+ * which is what STORY_GENERATION/IMAGES/VOICE/RENDERING reservations
+ * actually pass (see WorkflowExecutor.reservePerCategory()) and is
+ * correct for them: those categories each have exactly one real provider
+ * today, so a fixed literal is accurate. VIDEOS was the one category that
+ * doesn't fit that pattern — this codebase can execute a video generation
+ * through either LTX or GOOGLE (services/rendering/interfaces/RenderProvider.ts's
+ * ProviderId, a different union), selected by VIDEO_PROVIDER — but billing
+ * was hardcoding the literal 'VEO' for every video regardless of which of
+ * the two actually ran. That's now fixed at the call site
+ * (WorkflowExecutor.ts uses resolveActiveVideoProviderId() instead of a
+ * literal); this file's contribution is accepting GOOGLE/LTX as valid
+ * multiplier keys alongside the pre-existing orchestrator-layer ones, so
+ * that fix actually prices correctly instead of falling through to
+ * DEFAULT_PROVIDER_MULTIPLIER by accident.
  */
 
 import type { ProviderId } from '../orchestrator/OrchestratorTypes'
+import type { ProviderId as RenderingProviderId } from '../rendering/interfaces/RenderProvider'
 import type { UsageCategory } from './BillingTypes'
 
 export class CreditCalculatorError extends Error {
@@ -67,8 +85,24 @@ const BASE_RATES: Record<UsageCategory, CategoryRate> = {
   STORAGE: { perUnit: 0.05, unit: 'scene' },
 }
 
-/** How much more (>1) or less (<1) a given provider costs relative to baseline. */
-const PROVIDER_MULTIPLIER: Partial<Record<ProviderId, number>> = {
+/**
+ * How much more (>1) or less (<1) a given provider costs relative to
+ * baseline. Keys span two independent ProviderId unions on purpose (see
+ * this file's header) — GEMINI/IMAGEN/VEO/etc. are the orchestrator's
+ * planning-layer ids (still what STORY_GENERATION/IMAGES/VOICE/RENDERING
+ * reservations pass); GOOGLE/LTX are the rendering layer's real
+ * execution-time ids (what VIDEOS reservations now pass, post-VGE-01).
+ * VEO's multiplier is preserved unchanged and carried over to GOOGLE (the
+ * same real provider, this codebase's execution-time name for it) so
+ * behavior for that path is identical to before this fix. LTX gets its
+ * own explicit entry at the neutral default rather than silently
+ * inheriting VEO's 1.1x the way it incorrectly did prior to VGE-01 — see
+ * this file's header for why that was a real bug, not a rounding
+ * difference: LTX has never had its own cost data, so 1x is the honest
+ * "we don't have a real number for this yet" value, not a claim that LTX
+ * actually costs the same as Veo.
+ */
+const PROVIDER_MULTIPLIER: Partial<Record<ProviderId | RenderingProviderId, number>> = {
   GEMINI: 1,
   IMAGEN: 1,
   VEO: 1.1,
@@ -79,6 +113,8 @@ const PROVIDER_MULTIPLIER: Partial<Record<ProviderId, number>> = {
   DEEPSEEK: 0.6,
   GROQ: 0.5,
   OPENROUTER: 0.9,
+  GOOGLE: 1.1,
+  LTX: 1,
 }
 
 const DEFAULT_PROVIDER_MULTIPLIER = 1
@@ -87,7 +123,7 @@ const DEFAULT_PROVIDER_MULTIPLIER = 1
 const DEFAULT_SCENE_SECONDS = 8
 
 function getProviderMultiplier(providerId: string): number {
-  return PROVIDER_MULTIPLIER[providerId as ProviderId] ?? DEFAULT_PROVIDER_MULTIPLIER
+  return PROVIDER_MULTIPLIER[providerId as ProviderId | RenderingProviderId] ?? DEFAULT_PROVIDER_MULTIPLIER
 }
 
 export class CreditCalculator {
