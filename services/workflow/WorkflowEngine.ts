@@ -51,9 +51,14 @@ export class WorkflowEngine {
     this.events.onAny((event) => this.syncFromEvent(event))
   }
 
-  /** Creates a workflow and starts it. Resolves once the workflow reaches Completed, Failed, Cancelled, or Paused. */
-  async startWorkflow(request: WorkflowRequest): Promise<WorkflowContext> {
-    const context = createWorkflowContext(request)
+  /**
+   * Creates a workflow and starts it. Resolves once the workflow reaches
+   * Completed, Failed, Cancelled, or Paused. `id`, if supplied, becomes
+   * this workflow's id instead of a freshly generated one — see
+   * createWorkflowContext()'s doc comment for why a caller would need that.
+   */
+  async startWorkflow(request: WorkflowRequest, id?: string): Promise<WorkflowContext> {
+    const context = createWorkflowContext(request, id)
     this.workflows.set(context.id, context)
 
     const finished = await this.coordinator.run(context)

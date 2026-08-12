@@ -68,10 +68,18 @@ export interface WorkflowContext {
   resumable: boolean
 }
 
-export function createWorkflowContext(request: WorkflowRequest): WorkflowContext {
+/**
+ * `id` defaults to a fresh randomUUID() when omitted (the only mode used
+ * on Vercel today). An explicit id lets a caller that must hand a
+ * productionId back to its own caller *before* the workflow starts (e.g.
+ * enqueueing work onto a queue whose consumer runs elsewhere and later)
+ * make that id and the workflow's own id the same thing, instead of
+ * inventing a second identifier to reconcile against this one afterward.
+ */
+export function createWorkflowContext(request: WorkflowRequest, id?: string): WorkflowContext {
   const now = new Date().toISOString()
   return {
-    id: randomUUID(),
+    id: id ?? randomUUID(),
     request,
     status: WorkflowStatus.Created,
     stages: WORKFLOW_STAGE_ORDER.map((stage) => ({ stage, status: 'PENDING' as StageExecutionStatus, retryCount: 0 })),

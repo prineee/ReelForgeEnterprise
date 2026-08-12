@@ -74,6 +74,7 @@ app.listen(PORT, () => {
     if (process.env.REDIS_URL) {
       require('./services/sceneWorker')
       console.log('[queue] Scene generation worker started')
+      require('./services/movieProductionWorker')
     } else {
       console.warn('[queue] REDIS_URL not set — running in direct mode (no queue)')
     }

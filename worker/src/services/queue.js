@@ -2,6 +2,7 @@
 
 let videoQueue = null
 let sceneQueue = null
+let movieProductionQueue = null
 let videoQueueEvents = null
 
 try {
@@ -12,6 +13,7 @@ try {
     const connection = { url: REDIS_URL }
     videoQueue = new Queue('video-generation', { connection })
     sceneQueue = new Queue('scene-generation', { connection })
+    movieProductionQueue = new Queue('movie-production', { connection })
     videoQueueEvents = new QueueEvents('video-generation', { connection })
     console.log('[queue] Redis connected successfully')
   } else {
@@ -43,8 +45,38 @@ async function addSceneJob(jobData) {
   return job.id
 }
 
+/**
+ * jobId is explicitly set to productionId (not left to BullMQ's default
+ * auto-generated id) — a duplicate add() for the same productionId is a
+ * no-op rather than a second job, which combined with reserve_credits'
+ * own (production_id, category) idempotency is what makes a retried
+ * POST /api/movie/create -> enqueue call safe to repeat.
+ *
+ * attempts: 1, unlike the queues above — a movie production that fails
+ * partway through has already made real, paid Gemini/Imagen/VEO calls; an
+ * automatic BullMQ retry would re-run MovieProductionService.startProduction()
+ * from scratch (it has no "resume from where it left off" for these
+ * stages) and make those calls again, which is exactly the "no additional
+ * credits through repeated retries" the workflow rules for this project
+ * forbid. A failed production surfaces as FAILED via WorkflowRecovery's
+ * existing credit-release path instead of being silently retried here.
+ */
+async function addMovieProductionJob(jobData) {
+  if (!movieProductionQueue) throw new Error('Queue not available (no Redis)')
+  const job = await movieProductionQueue.add('produce-movie', jobData, {
+    jobId: jobData.productionId,
+    attempts: 1,
+    removeOnComplete: { age: 86400 },
+    removeOnFail: { age: 86400 },
+  })
+  return job.id
+}
+
 async function getJobStatus(jobId, queueName = 'video-generation') {
-  const q = queueName === 'scene-generation' ? sceneQueue : videoQueue
+  const q =
+    queueName === 'scene-generation' ? sceneQueue :
+    queueName === 'movie-production' ? movieProductionQueue :
+    videoQueue
   if (!q) return null
   const job = await q.getJob(jobId)
   if (!job) return null
@@ -72,6 +104,6 @@ async function getQueueStats() {
 }
 
 module.exports = {
-  videoQueue, sceneQueue, videoQueueEvents,
-  addVideoJob, addSceneJob, getJobStatus, getQueueStats,
+  videoQueue, sceneQueue, movieProductionQueue, videoQueueEvents,
+  addVideoJob, addSceneJob, addMovieProductionJob, getJobStatus, getQueueStats,
 }
