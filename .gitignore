@@ -9,6 +9,7 @@
 # Node
 node_modules/
 worker/node_modules/
+worker/dist/
 
 # Supabase temporary
 supabase/.temp/

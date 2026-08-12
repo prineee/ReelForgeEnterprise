@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "es2020",
+    "lib": ["es2020"],
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "rootDir": ".",
+    "outDir": "worker/dist/shared",
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "strict": false,
+    "noEmit": false,
+    "declaration": false,
+    "sourceMap": false,
+    "paths": {
+      "@/lib/supabase/admin": ["./worker/src/lib/supabaseAdmin.ts"],
+      "@/*": ["./*"]
+    }
+  },
+  "include": ["services/**/*.ts", "worker/src/lib/**/*.ts"],
+  "exclude": ["node_modules", "**/*.test.ts", "worker/node_modules"]
+}
