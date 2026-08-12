@@ -7,6 +7,7 @@ import {
 } from '@/services/infrastructure/MovieProductionFactory'
 import { ProductionStatus } from '@/services/ai/orchestration/MovieProductionContracts'
 import type { ProductionProgress } from '@/services/ai/orchestration/MovieProductionContracts'
+import type { ProductionContext } from '@/services/infrastructure/ProductionContextRepository'
 
 /**
  * ProductionProgress (MovieProductionContracts.ts) has no status/progress/
@@ -14,8 +15,14 @@ import type { ProductionProgress } from '@/services/ai/orchestration/MovieProduc
  * overallPercentComplete, and a per-stage stages[] array. This route is
  * forbidden from modifying contracts or the service, so the requested
  * response shape is derived here rather than changed upstream.
+ *
+ * finalVideoUrl/finalVideoMetadata come from the raw ProductionContext
+ * (already fetched below for the ownership check), not from progress —
+ * RealFinalRenderer writes them onto the context directly, outside
+ * MovieProductionService/ProductionProgress's contract entirely (see
+ * ProductionContextRepository.ts's file header).
  */
-function toResponseBody(progress: ProductionProgress) {
+function toResponseBody(progress: ProductionProgress, context: ProductionContext | undefined) {
   const completedStages = progress.stages
     .filter((stage) => stage.status === ProductionStatus.Completed)
     .map((stage) => stage.stage)
@@ -32,6 +39,8 @@ function toResponseBody(progress: ProductionProgress) {
     completedStages,
     remainingStages,
     error: progress.error,
+    finalVideoUrl: context?.finalVideoUrl,
+    finalVideoMetadata: context?.finalVideoMetadata,
   }
 }
 
@@ -107,7 +116,7 @@ export async function GET(
     const progress = await service.getProgress(productionId)
 
     // 4. Return HTTP 200.
-    return NextResponse.json(toResponseBody(progress))
+    return NextResponse.json(toResponseBody(progress, context))
   } catch (error) {
     if (isUnknownProductionError(error)) {
       return NextResponse.json({ error: 'Unknown production.' }, { status: 404 })

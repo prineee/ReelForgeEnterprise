@@ -83,6 +83,14 @@ export interface UploadedReferenceAsset {
  * movieAssembly, Stage 6 → finalRenderPlan) and reads only the fields
  * produced by earlier stages it depends on. Only fields currently needed
  * by an implemented stage exist here — no speculative future fields.
+ *
+ * finalVideoUrl/finalVideoMetadata are the one exception to "each stage
+ * owns exactly one field, written by MovieProductionService": they're
+ * written by RealFinalRenderer, which runs after
+ * MovieProductionService.startProduction() resolves (consuming its
+ * finalRenderPlan) — see FinalMovieRenderer.ts's file header for why that
+ * split exists (FinalMovieRenderer only ever produced a render manifest,
+ * never an encoded file). Both are undefined until that step completes.
  */
 export interface ProductionContext {
   productionId: ProductionId;
@@ -94,6 +102,14 @@ export interface ProductionContext {
   generatedVideos?: GeneratedVideo[];
   movieAssembly?: MovieAssemblyResult;
   finalRenderPlan?: RenderPlan;
+  /** The real, playable merged-and-uploaded movie URL — set by RealFinalRenderer, not MovieProductionService. Undefined until the FFmpeg merge + Cloudinary upload step completes. */
+  finalVideoUrl?: string;
+  finalVideoMetadata?: {
+    durationSeconds: number;
+    resolution: string;
+    format: string;
+    bytes: number;
+  };
   /** Set when a stage throws — see ProductionFailure. Undefined means no failure has occurred. */
   failure?: ProductionFailure;
 }
