@@ -98,8 +98,15 @@ export class WorkflowRecovery {
       try {
         const record = await this.billing.releaseReservation(reservation.reservationId, decision.reason)
         next = withReservationSettled(next, reservation.reservationId, { consumed: 0, released: record.amount })
-      } catch {
-        // Already consumed elsewhere between the failure and this call — nothing further to release.
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        const alreadySettled = /already (released|consumed)/i.test(message)
+        if (!alreadySettled) {
+          // A real failure, not "already consumed/released elsewhere" — must not vanish silently.
+          console.error(
+            `[WorkflowRecovery] Failed to release reservation "${reservation.reservationId}" for workflow "${context.id}": ${message}`
+          )
+        }
         next = withReservationSettled(next, reservation.reservationId, { consumed: 0, released: 0 })
       }
     }
