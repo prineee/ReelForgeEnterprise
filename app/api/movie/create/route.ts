@@ -8,6 +8,14 @@ import {
 const MIN_IDEA_LENGTH = 10
 const MAX_IDEA_LENGTH = 5000
 
+// after(completion) below keeps this invocation alive to run the background
+// pipeline to completion, but it is still bounded by this route's own
+// maxDuration — Vercel's platform default (10-15s) is far shorter than a
+// real Story Planning -> Rendering run (minutes), so without this the
+// function was killed mid-pipeline before a failure could ever be recorded
+// on the ProductionContext, leaving status polling stuck at QUEUED forever.
+export const maxDuration = 300
+
 /**
  * Movie Studio's entry point into the full pipeline: Workflow Engine now
  * owns this request end to end (validate -> reserve credits -> queue ->
