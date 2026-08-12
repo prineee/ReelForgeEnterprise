@@ -57,7 +57,8 @@ const NAV_ITEMS = [
 
 interface Props {
   children: React.ReactNode
-  credits: number
+  /** null means the balance couldn't be confirmed (fetch error) — must render distinctly from an actual 0. */
+  credits: number | null
 }
 
 export function DashboardShell({ children, credits }: Props) {
@@ -107,7 +108,7 @@ export function DashboardShell({ children, credits }: Props) {
       >
         <Zap className="w-3.5 h-3.5 text-yellow-400" />
         <span>Credits</span>
-        <span className="ml-auto text-white font-semibold">{credits}</span>
+        <span className="ml-auto text-white font-semibold">{credits === null ? '—' : credits}</span>
       </Link>
 
       <button
