@@ -18,7 +18,6 @@ export default async function DashboardLayout({
   // actually-empty balance, showing users a scary-but-false "0 credits".
   let credits: number | null = null;
   if (user) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: profile, error } = (await (supabase.from("users") as any)
       .select("credits")
       .eq("id", user.id)
