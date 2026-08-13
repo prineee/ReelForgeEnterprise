@@ -86,20 +86,38 @@ export class RenderOrchestrator {
     return unified;
   }
 
-  /** Polls a previously started job. `jobId` is RenderOrchestrator's own id, from render()'s result. */
+  /**
+   * Polls a previously started job. `jobId` is RenderOrchestrator's own
+   * id, from render()'s result. Never throws for a provider-side failure
+   * — mirrors render()'s existing contract (post-VGE-02 review, C1 fix):
+   * a provider's checkStatus() can throw (e.g. a classified
+   * VeoProviderError from a transient network failure during polling),
+   * and previously that propagated straight out of renderAndWait()'s poll
+   * loop, uncaught — contradicting renderAndWait()'s own documented
+   * "never throws" guarantee. No retry and no fallback to a different
+   * provider happen here — a caught failure is reported once, as-is.
+   */
   async checkStatus(jobId: string): Promise<RenderResult> {
     const job = this.requireJob(jobId);
-    const provider = this.registry.resolve(job.providerId);
-    const result = await provider.checkStatus(job.providerJobId);
-    return this.unify(result, jobId, job.providerId);
+    try {
+      const provider = this.registry.resolve(job.providerId);
+      const result = await provider.checkStatus(job.providerJobId);
+      return this.unify(result, jobId, job.providerId);
+    } catch (error) {
+      return this.toFailedResult(jobId, job.providerId, error);
+    }
   }
 
-  /** Downloads a completed job's video. `jobId` is RenderOrchestrator's own id, from render()'s result. */
+  /** Downloads a completed job's video. `jobId` is RenderOrchestrator's own id, from render()'s result. Never throws for a provider-side failure — see checkStatus()'s doc comment for why (C1 fix, same reasoning applies here). */
   async download(jobId: string): Promise<RenderResult> {
     const job = this.requireJob(jobId);
-    const provider = this.registry.resolve(job.providerId);
-    const result = await provider.download(job.providerJobId);
-    return this.unify(result, jobId, job.providerId);
+    try {
+      const provider = this.registry.resolve(job.providerId);
+      const result = await provider.download(job.providerJobId);
+      return this.unify(result, jobId, job.providerId);
+    } catch (error) {
+      return this.toFailedResult(jobId, job.providerId, error);
+    }
   }
 
   /**
@@ -154,13 +172,34 @@ export class RenderOrchestrator {
     return { ...result, jobId, provider: providerId };
   }
 
+  /**
+   * (C1 fix, post-VGE-02 review) Preserves a typed provider error's `code`
+   * (e.g. VeoProviderError's VeoProviderErrorCode) in `metadata`, and
+   * prefixes the human-readable message with it, without this file
+   * importing any specific provider's error class — RenderOrchestrator
+   * "owns no provider-specific logic" (see file header), so the code is
+   * read duck-typed here rather than via an `instanceof` check against one
+   * provider's error type. Any current or future provider whose thrown
+   * error happens to expose a string `.code` gets this same treatment.
+   */
   private toFailedResult(jobId: string, providerId: ProviderId, error: unknown): RenderResult {
+    const message = error instanceof Error ? error.message : String(error);
+    const code = this.extractErrorCode(error);
     return {
       jobId,
       status: "FAILED",
       provider: providerId,
-      error: error instanceof Error ? error.message : String(error),
+      error: code ? `[${code}] ${message}` : message,
+      metadata: code ? { errorCode: code } : undefined,
     };
+  }
+
+  private extractErrorCode(error: unknown): string | undefined {
+    if (error && typeof error === "object" && "code" in error) {
+      const code = (error as { code: unknown }).code;
+      if (typeof code === "string") return code;
+    }
+    return undefined;
   }
 
   private recordMetric(

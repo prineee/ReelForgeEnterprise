@@ -377,7 +377,7 @@ function validateVeoRequest(request: VeoRequest): void {
  * guessing: it's what services/rendering/interfaces/RenderProvider.ts's
  * RenderAssetInput and the SDK's own Image/Video types actually allow.
  */
-function toSdkAsset(asset: VeoAssetInput | undefined, field: string): { gcsUri?: string; imageBytes?: string; videoBytes?: string; mimeType?: string } | undefined {
+function toSdkAsset(asset: VeoAssetInput | undefined, field: string): { gcsUri?: string; uri?: string; imageBytes?: string; videoBytes?: string; mimeType?: string } | undefined {
   if (!asset) return undefined;
 
   if (asset.base64) {
@@ -386,7 +386,12 @@ function toSdkAsset(asset: VeoAssetInput | undefined, field: string): { gcsUri?:
       : { imageBytes: asset.base64, mimeType: asset.mimeType };
   }
   if (asset.url?.startsWith("gs://")) {
-    return { gcsUri: asset.url, mimeType: asset.mimeType };
+    // Fix (post-VGE-02 review, C1/H1 pass): the SDK's Image and Video
+    // types are NOT the same shape — Image uses gcsUri, Video uses uri
+    // (confirmed directly against node_modules/@google/genai/dist/genai.d.ts).
+    // Using gcsUri for a video reference silently built a field the SDK's
+    // Video type doesn't have, breaking video extension for any gs:// URL.
+    return field === "video" ? { uri: asset.url, mimeType: asset.mimeType } : { gcsUri: asset.url, mimeType: asset.mimeType };
   }
   if (asset.url) {
     throw new VeoProviderError(

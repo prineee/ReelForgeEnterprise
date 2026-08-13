@@ -131,6 +131,56 @@ describe("GoogleGenAIVeoClient — image-to-video request translation", () => {
   });
 });
 
+describe("GoogleGenAIVeoClient — video extension request translation (H1 regression)", () => {
+  test("a gs:// extendVideo URL is sent as video.uri, NOT video.gcsUri — Image and Video are different SDK shapes", async () => {
+    let captured: any;
+    const client = new GoogleGenAIVeoClient(fakeAi(async (params) => {
+      captured = params;
+      return { name: "op-1", done: false };
+    }) as any);
+
+    await client.generate(
+      baseRequest({
+        extendVideo: { url: "gs://example/video.mp4", mimeType: "video/mp4" },
+        durationSeconds: 8,
+      })
+    );
+
+    assert.deepEqual(captured.video, { uri: "gs://example/video.mp4", mimeType: "video/mp4" });
+    assert.equal(captured.video.gcsUri, undefined, "Video must not carry gcsUri — the SDK's Video type has no such field, only Image does.");
+  });
+
+  test("a base64 extendVideo asset is sent as video.videoBytes (unchanged by the H1 fix)", async () => {
+    let captured: any;
+    const client = new GoogleGenAIVeoClient(fakeAi(async (params) => {
+      captured = params;
+      return { name: "op-1", done: false };
+    }) as any);
+
+    await client.generate(
+      baseRequest({
+        extendVideo: { base64: "dmlkZW8tYnl0ZXM=", mimeType: "video/mp4" },
+        durationSeconds: 8,
+      })
+    );
+
+    assert.deepEqual(captured.video, { videoBytes: "dmlkZW8tYnl0ZXM=", mimeType: "video/mp4" });
+  });
+
+  test("a gs:// image URL is still sent as image.gcsUri (Image's own field, unaffected by the H1 fix)", async () => {
+    let captured: any;
+    const client = new GoogleGenAIVeoClient(fakeAi(async (params) => {
+      captured = params;
+      return { name: "op-1", done: false };
+    }) as any);
+
+    await client.generate(baseRequest({ image: { url: "gs://example/ref.png", mimeType: "image/png" } }));
+
+    assert.deepEqual(captured.image, { gcsUri: "gs://example/ref.png", mimeType: "image/png" });
+    assert.equal(captured.image.uri, undefined);
+  });
+});
+
 describe("GoogleGenAIVeoClient — duration validation", () => {
   test("rejects an unsupported duration", async () => {
     const client = new GoogleGenAIVeoClient(fakeAi(async () => ({ name: "op-1", done: false })) as any);
