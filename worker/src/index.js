@@ -3,6 +3,7 @@
 require('dotenv').config()
 const movieRenderRoutes = require('./routes/movieRenderRoutes')
 const movieProductionRoutes = require('./routes/movieProductionRoutes')
+const veoSmokeTestRoutes = require('./routes/veoSmokeTestRoutes')
 const express       = require('express')
 const reelRoutes            = require('./routes/reelRoutes')
 const cartoonRoutes         = require('./routes/cartoonRoutes')
@@ -58,6 +59,7 @@ app.use('/', lipSyncRoutes)
 // Mounted after express.json() (unlike movieRenderRoutes above, which is
 // mounted before it) so req.body is actually parsed for this route.
 app.use('/', movieProductionRoutes)
+app.use('/', veoSmokeTestRoutes)
 
 // ── 404 / error fallbacks ─────────────────────────────────────────────────────
 app.use((_req, res) => res.status(404).json({ error: 'Not found' }))
@@ -72,6 +74,7 @@ app.listen(PORT, () => {
   console.log(`  POST /api/generate-video         — SSE video generation`)
   console.log(`  POST /api/generate-movie-scenes  — SSE scene generation`)
   console.log(`  POST /api/movie/enqueue          — enqueue a Movie Studio production`)
+  console.log(`  POST /api/internal/veo-smoke-test/enqueue — enqueue an internal Veo smoke test`)
   console.log(`  GET  /api/queue/status           — queue stats`)
   console.log(`  GET  /health                     — health check\n`)
 
@@ -80,6 +83,7 @@ app.listen(PORT, () => {
       require('./services/sceneWorker')
       console.log('[queue] Scene generation worker started')
       require('./services/movieProductionWorker')
+      require('./services/veoSmokeTestWorker')
     } else {
       console.warn('[queue] REDIS_URL not set — running in direct mode (no queue)')
     }

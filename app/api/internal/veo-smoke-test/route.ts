@@ -1,51 +1,31 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin";
 import { createDefaultBillingEngine } from "@/services/billing/BillingEngine";
-import {
-  getSharedProductionContextRepository,
-  CloudinaryStorageClient,
-} from "@/services/infrastructure/MovieProductionFactory";
-import { RenderOrchestrator } from "@/services/rendering/RenderOrchestrator";
-import { createDefaultProviderRegistry } from "@/services/rendering/ProviderRegistry";
-import { ProviderSelector } from "@/services/rendering/ProviderSelector";
-import type { ProviderId } from "@/services/rendering/interfaces/RenderProvider";
-import { runVeoSmokeTest } from "@/services/internal/VeoSmokeTestHarness";
+import { getSharedProductionContextRepository } from "@/services/infrastructure/MovieProductionFactory";
+import { reserveVeoSmokeTest } from "@/services/internal/VeoSmokeTestHarness";
 
 const MIN_PROMPT_LENGTH = 10;
 const MAX_PROMPT_LENGTH = 2000;
-
-// Generation + polling can run for minutes — the exact bug fixed in
-// commit 7356509 for /api/movie/create applies here too: without this,
-// the function can be killed mid-generation before the single
-// renderAndWait() call resolves either way.
-export const maxDuration = 300;
-
-/**
- * ForceGoogleProviderSelector — this route's whole reason for existing is
- * to test the real Veo integration specifically, regardless of whatever
- * VIDEO_PROVIDER is configured for real user traffic (currently "ltx" in
- * production — see VGE-01). The base ProviderSelector reads that env var;
- * this override always returns GOOGLE, so this endpoint can never
- * silently exercise LTX instead of Veo, and never falls back to it on
- * failure (nothing here catches a GOOGLE failure and re-selects).
- */
-class ForceGoogleProviderSelector extends ProviderSelector {
-  select(): ProviderId {
-    return "GOOGLE";
-  }
-}
 
 /**
  * POST /api/internal/veo-smoke-test
  *
  * Internal/developer-only. No UI, no sidebar entry, not reachable by any
  * beta user — gated by requireAdmin() (lib/admin.ts), the same
- * authorization already protecting every app/api/admin/** route. Runs
- * exactly one real Veo generation through the existing
- * RenderProvider/RenderOrchestrator/BillingEngine/ProductionContextRepository/
- * Cloudinary stack (see services/internal/VeoSmokeTestHarness.ts) — no
- * new provider, no duplicated billing or upload logic, no automatic
- * retry, no LTX fallback.
+ * authorization already protecting every app/api/admin/** route.
+ *
+ * This route ONLY reserves credits and enqueues one job on the Railway
+ * worker — it does not call Veo, does not poll, does not upload, and
+ * returns in well under a second. That split is deliberate: Vercel's
+ * Hobby plan hard-kills any function after 60 seconds regardless of
+ * `maxDuration`, but a real Veo generation (submit, poll, download) can
+ * take several minutes. Running that synchronously here previously risked
+ * the function being killed mid-generation with credits already reserved
+ * and nothing to release them (see services/internal/VeoSmokeTestHarness.ts's
+ * header). The actual generation, Cloudinary upload, and billing
+ * settlement/release now happen on the Railway worker (see
+ * worker/src/services/veoSmokeTestWorker.js), which has no execution-time
+ * ceiling.
  *
  * Body: { prompt: string, aspectRatio?: string, durationSeconds?: number }
  */
@@ -75,40 +55,53 @@ export async function POST(req: Request) {
   const rawDuration = (body as { durationSeconds?: unknown } | null)?.durationSeconds;
   const durationSeconds = typeof rawDuration === "number" ? rawDuration : undefined;
 
-  const cloudinaryCloudName = process.env.CLOUDINARY_CLOUD_NAME;
-  const cloudinaryApiKey = process.env.CLOUDINARY_API_KEY;
-  const cloudinaryApiSecret = process.env.CLOUDINARY_API_SECRET;
-  if (!cloudinaryCloudName || !cloudinaryApiKey || !cloudinaryApiSecret) {
-    return NextResponse.json({ error: "Cloudinary credentials are not configured." }, { status: 500 });
+  const workerUrl = process.env.NEXT_PUBLIC_WORKER_URL;
+  if (!workerUrl) {
+    return NextResponse.json({ error: "NEXT_PUBLIC_WORKER_URL is not configured." }, { status: 500 });
   }
 
-  const registry = createDefaultProviderRegistry();
-  const orchestrator = new RenderOrchestrator(registry, new ForceGoogleProviderSelector());
-  const cloudinaryClient = new CloudinaryStorageClient(cloudinaryCloudName, cloudinaryApiKey, cloudinaryApiSecret);
+  const billingEngine = createDefaultBillingEngine();
+
+  // Reserve first — the job payload sent to the worker below is exactly
+  // this reservation, so the worker never has to re-derive or re-select
+  // a provider/duration on its own.
+  const reservation = await reserveVeoSmokeTest(
+    { userId: check.userId, prompt, aspectRatio, durationSeconds },
+    { billingEngine, contextRepository: getSharedProductionContextRepository() }
+  );
 
   try {
-    const result = await runVeoSmokeTest(
-      { userId: check.userId, prompt, aspectRatio, durationSeconds },
-      {
-        billingEngine: createDefaultBillingEngine(),
-        contextRepository: getSharedProductionContextRepository(),
-        orchestrator,
-        uploadVideo: async (sourceUrl, publicId) => {
-          const uploaded = await cloudinaryClient.upload({
-            sourceUrl,
-            resourceType: "video",
-            folder: "reelforge/internal-veo-smoke-test",
-            fileName: publicId,
-            overwrite: false,
-          });
-          return { secureUrl: uploaded.secureUrl ?? uploaded.url };
-        },
-      }
-    );
+    const response = await fetch(`${workerUrl}/api/internal/veo-smoke-test/enqueue`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(reservation),
+    });
 
-    return NextResponse.json(result, { status: result.status === "COMPLETED" ? 200 : 502 });
+    if (!response.ok) {
+      const detail = await response.text().catch(() => "");
+      // Enqueue is a fast, synchronous HTTP call (unlike Veo generation
+      // itself) — its failure is known well within Vercel's execution
+      // window, so it's safe to release the reservation right here rather
+      // than leaving it HELD with no job that will ever execute it.
+      await billingEngine
+        .releaseReservation(reservation.reservationId, `Veo smoke test enqueue failed: ${response.status}`)
+        .catch(() => {});
+      return NextResponse.json(
+        { error: `Worker enqueue failed (${response.status}): ${detail.slice(0, 300)}` },
+        { status: 502 }
+      );
+    }
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Veo smoke test failed unexpectedly.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    const message = error instanceof Error ? error.message : "Worker enqueue failed unexpectedly.";
+    await billingEngine.releaseReservation(reservation.reservationId, `Veo smoke test enqueue failed: ${message}`).catch(() => {});
+    return NextResponse.json({ error: message }, { status: 502 });
   }
+
+  return NextResponse.json({
+    productionId: reservation.productionId,
+    reservationId: reservation.reservationId,
+    provider: reservation.provider,
+    requestedDurationSeconds: reservation.durationSeconds,
+    status: "QUEUED",
+  });
 }

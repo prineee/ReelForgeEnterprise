@@ -3,6 +3,7 @@
 let videoQueue = null
 let sceneQueue = null
 let movieProductionQueue = null
+let veoSmokeTestQueue = null
 let videoQueueEvents = null
 
 try {
@@ -14,6 +15,7 @@ try {
     videoQueue = new Queue('video-generation', { connection })
     sceneQueue = new Queue('scene-generation', { connection })
     movieProductionQueue = new Queue('movie-production', { connection })
+    veoSmokeTestQueue = new Queue('veo-smoke-test', { connection })
     videoQueueEvents = new QueueEvents('video-generation', { connection })
     console.log('[queue] Redis connected successfully')
   } else {
@@ -72,10 +74,36 @@ async function addMovieProductionJob(jobData) {
   return job.id
 }
 
+/**
+ * jobId = productionId, same reasoning as addMovieProductionJob() above —
+ * a duplicate enqueue for the same productionId is a no-op add, not a
+ * second job.
+ *
+ * attempts: 1 — a Veo smoke test that fails partway through has already
+ * potentially made a real, paid Veo call; an automatic BullMQ retry would
+ * invoke executeVeoSmokeTest() again from scratch. The idempotency guard
+ * at the top of executeVeoSmokeTest() (services/internal/VeoSmokeTestHarness.ts)
+ * is what actually prevents a second Veo call on stalled-job redelivery
+ * (a mechanism independent of `attempts` — see lockDuration on the Worker
+ * in veoSmokeTestWorker.js); attempts:1 just keeps BullMQ's own
+ * throw-triggered retry out of the picture too.
+ */
+async function addVeoSmokeTestJob(jobData) {
+  if (!veoSmokeTestQueue) throw new Error('Queue not available (no Redis)')
+  const job = await veoSmokeTestQueue.add('run-smoke-test', jobData, {
+    jobId: jobData.productionId,
+    attempts: 1,
+    removeOnComplete: { age: 86400 },
+    removeOnFail: { age: 86400 },
+  })
+  return job.id
+}
+
 async function getJobStatus(jobId, queueName = 'video-generation') {
   const q =
     queueName === 'scene-generation' ? sceneQueue :
     queueName === 'movie-production' ? movieProductionQueue :
+    queueName === 'veo-smoke-test' ? veoSmokeTestQueue :
     videoQueue
   if (!q) return null
   const job = await q.getJob(jobId)
@@ -104,6 +132,6 @@ async function getQueueStats() {
 }
 
 module.exports = {
-  videoQueue, sceneQueue, movieProductionQueue, videoQueueEvents,
-  addVideoJob, addSceneJob, addMovieProductionJob, getJobStatus, getQueueStats,
+  videoQueue, sceneQueue, movieProductionQueue, veoSmokeTestQueue, videoQueueEvents,
+  addVideoJob, addSceneJob, addMovieProductionJob, addVeoSmokeTestJob, getJobStatus, getQueueStats,
 }
