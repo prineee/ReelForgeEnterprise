@@ -86,6 +86,22 @@ try {
 
       console.log(`[veoSmokeTestWorker] Job ${job.id}: finished with status ${result.status}`)
 
+      if (result.status === 'RECOVERY_REQUIRED') {
+        // Deliberately distinct from a normal FAILED: executeVeoSmokeTest()
+        // has NOT released the reservation here — the external
+        // generation's true outcome could not be confirmed (see
+        // services/internal/VeoSmokeTestHarness.ts's header). This needs a
+        // human to check the Veo/Cloud console against
+        // ProductionContext.veoGeneration.operationId and manually settle
+        // or release reservationId — surfaced loudly, not silently
+        // swallowed as an ordinary failure.
+        console.error(
+          `[veoSmokeTestWorker] Job ${job.id}: RECOVERY_REQUIRED for production "${productionId}" — ` +
+            `reservation "${reservationId}" is neither settled nor released. Manual review required. Reason: ${result.error}`
+        )
+        throw new Error(`RECOVERY_REQUIRED: ${result.error ?? 'Veo generation outcome could not be confirmed.'}`)
+      }
+
       if (result.status !== 'COMPLETED') {
         // Release/failure recording already happened inside
         // executeVeoSmokeTest() — throwing here only marks the BullMQ job

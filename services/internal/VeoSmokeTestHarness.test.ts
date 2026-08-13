@@ -6,14 +6,19 @@
  * file header for the established convention this follows.)
  *
  * Every dependency is faked — no real Supabase call, no real Veo call, no
- * real Cloudinary upload anywhere in this suite.
+ * real Cloudinary upload anywhere in this suite. executeVeoSmokeTest() is
+ * exercised against a REAL RenderOrchestrator wrapping a scripted
+ * RenderProvider (mirroring RenderOrchestrator.test.ts's own
+ * ScriptedProvider/buildOrchestrator convention) rather than a hand-rolled
+ * fake orchestrator — this lets these tests prove the real
+ * providerJobId/resumeJob()/pollUntilTerminal() integration actually
+ * works, not just that the harness calls some mock correctly.
  *
  * Covers both halves of the Vercel -> Railway split (see
- * VeoSmokeTestHarness.ts's header):
- *   - reserveVeoSmokeTest() — runs on Vercel, never touches the orchestrator.
- *   - executeVeoSmokeTest() — runs on the Railway worker, including the
- *     idempotency guard that protects against BullMQ stalled-job
- *     redelivery invoking a second real, paid Veo call.
+ * VeoSmokeTestHarness.ts's header) and the in-flight-generation recovery
+ * state machine (SUBMITTING -> POLLING -> COMPLETED/FAILED/RECOVERY_REQUIRED)
+ * that protects against a worker crash + BullMQ stalled-job redelivery
+ * causing a second, duplicate, paid Veo generation.
  */
 
 import { test, describe } from "node:test";
@@ -27,8 +32,12 @@ import type {
 } from "./VeoSmokeTestHarness";
 import { InMemoryProductionContextRepository } from "../infrastructure/ProductionContextRepository";
 import { UsageCategory } from "../billing/BillingTypes";
-import type { RenderRequest } from "../rendering/interfaces/RenderProvider";
+import { RenderOrchestrator } from "../rendering/RenderOrchestrator";
+import { ProviderRegistry } from "../rendering/ProviderRegistry";
+import { ProviderSelector } from "../rendering/ProviderSelector";
+import type { RenderProvider, RenderRequest } from "../rendering/interfaces/RenderProvider";
 import type { RenderResult } from "../rendering/interfaces/RenderResult";
+import { VeoProviderError } from "../rendering/providers/cloud/VeoProviderError";
 
 const USER_ID = "test-user-1";
 
@@ -62,13 +71,51 @@ class FakeBillingEngine {
   }
 }
 
-class FakeOrchestrator {
-  renderAndWaitCalls: RenderRequest[] = [];
-  constructor(private readonly result: RenderResult | (() => Promise<RenderResult>)) {}
-  async renderAndWait(request: RenderRequest): Promise<RenderResult> {
-    this.renderAndWaitCalls.push(request);
-    return typeof this.result === "function" ? (this.result as () => Promise<RenderResult>)() : this.result;
+/** Deterministically selects GOOGLE, matching this harness's own PROVIDER_ID constant. */
+class FixedProviderSelector extends ProviderSelector {
+  select(): "GOOGLE" {
+    return "GOOGLE";
   }
+}
+
+interface ScriptedVeoBackend {
+  generate?: () => Promise<RenderResult>;
+  checkStatus?: () => Promise<RenderResult>;
+  download?: () => Promise<RenderResult>;
+}
+
+/** Stands in for the real Veo API (via GoogleVeoProvider/GoogleGenAIVeoClient) — the one thing that must never be called more than once per real generation. */
+class ScriptedProvider implements RenderProvider {
+  readonly name = "GOOGLE";
+  generateCalls = 0;
+  checkStatusCalls = 0;
+  downloadCalls = 0;
+  constructor(private readonly script: ScriptedVeoBackend) {}
+
+  async generate(_request: RenderRequest): Promise<RenderResult> {
+    this.generateCalls += 1;
+    return this.script.generate
+      ? this.script.generate()
+      : { jobId: "veo-operation-default", status: "PROCESSING", provider: "GOOGLE" };
+  }
+  async checkStatus(_jobId: string): Promise<RenderResult> {
+    this.checkStatusCalls += 1;
+    return this.script.checkStatus
+      ? this.script.checkStatus()
+      : { jobId: "veo-operation-default", status: "PROCESSING", provider: "GOOGLE" };
+  }
+  async download(_jobId: string): Promise<RenderResult> {
+    this.downloadCalls += 1;
+    return this.script.download
+      ? this.script.download()
+      : { jobId: "veo-operation-default", status: "COMPLETED", provider: "GOOGLE", videoUrl: "https://veo-raw/v.mp4" };
+  }
+}
+
+function buildOrchestrator(provider: RenderProvider): RenderOrchestrator {
+  const registry = new ProviderRegistry();
+  registry.register("GOOGLE", () => provider);
+  return new RenderOrchestrator(registry, new FixedProviderSelector());
 }
 
 function buildReserveDeps(overrides: {
@@ -85,7 +132,7 @@ function buildReserveDeps(overrides: {
 }
 
 function buildExecuteDeps(overrides: {
-  orchestrator: FakeOrchestrator;
+  orchestrator: RenderOrchestrator;
   billingEngine?: FakeBillingEngine;
   contextRepository?: InMemoryProductionContextRepository;
   uploadVideo?: (sourceUrl: string, publicId: string) => Promise<VeoSmokeTestUploadResult>;
@@ -95,8 +142,13 @@ function buildExecuteDeps(overrides: {
   const deps: VeoSmokeTestExecuteDependencies = {
     billingEngine: billingEngine as unknown as VeoSmokeTestExecuteDependencies["billingEngine"],
     contextRepository,
-    orchestrator: overrides.orchestrator as unknown as VeoSmokeTestExecuteDependencies["orchestrator"],
+    orchestrator: overrides.orchestrator,
     uploadVideo: overrides.uploadVideo ?? (async (sourceUrl) => ({ secureUrl: sourceUrl.replace("veo-raw", "cloudinary") })),
+    // A 1ms interval / 5-attempt cap so any test path that falls through
+    // to RenderOrchestrator.pollUntilTerminal()'s real sleep()-based loop
+    // (its own defaults are 5000ms/36 attempts, meant for real Veo calls)
+    // still runs near-instantly.
+    pollOptions: { pollIntervalMs: 1, maxAttempts: 5 },
   };
   return { deps, billingEngine, contextRepository };
 }
@@ -163,10 +215,6 @@ describe("reserveVeoSmokeTest — Vercel side", () => {
   });
 
   test("does not construct or call any orchestrator — Vercel never runs Veo", async () => {
-    // reserveVeoSmokeTest's dependency type has no orchestrator field at
-    // all, so this is enforced at compile time too; this test documents
-    // that the runtime behavior matches — reservation completes with only
-    // billing + context calls, nothing render-related.
     const { deps } = buildReserveDeps({});
     const reservation = await reserveVeoSmokeTest({ userId: USER_ID, prompt: "a".repeat(20) }, deps);
     assert.ok(reservation.productionId);
@@ -174,37 +222,240 @@ describe("reserveVeoSmokeTest — Vercel side", () => {
   });
 });
 
-describe("executeVeoSmokeTest — billing", () => {
-  test("settles (charges) the reservation on success", async () => {
+describe("executeVeoSmokeTest — fresh submission (1: submits once, 2: operation id persisted)", () => {
+  test("a fresh job calls generate() exactly once", async () => {
     const { reservation, contextRepository } = await reserveAndSeed();
-    const orchestrator = new FakeOrchestrator({ jobId: "j1", status: "COMPLETED", provider: "GOOGLE", videoUrl: "https://veo-raw/v.mp4", duration: 8 });
-    const { deps, billingEngine } = buildExecuteDeps({ orchestrator, contextRepository });
-
-    const result = await executeVeoSmokeTest(reservation, deps);
-
-    assert.equal(billingEngine.chargeCalls.length, 1);
-    assert.equal(billingEngine.releaseCalls.length, 0);
-    const charge = billingEngine.chargeCalls[0] as { reservationId: string };
-    assert.equal(charge.reservationId, result.reservationId);
-  });
-
-  test("releases (does not charge) the reservation on failure", async () => {
-    const { reservation, contextRepository } = await reserveAndSeed();
-    const orchestrator = new FakeOrchestrator({ jobId: "j1", status: "FAILED", provider: "GOOGLE", error: "quota exceeded" });
-    const { deps, billingEngine } = buildExecuteDeps({ orchestrator, contextRepository });
+    const provider = new ScriptedProvider({
+      generate: async () => ({ jobId: "veo-op-1", status: "PROCESSING", provider: "GOOGLE" }),
+      checkStatus: async () => ({ jobId: "veo-op-1", status: "COMPLETED", provider: "GOOGLE" }),
+      download: async () => ({ jobId: "veo-op-1", status: "COMPLETED", provider: "GOOGLE", videoUrl: "https://veo-raw/v.mp4", duration: 8 }),
+    });
+    const { deps } = buildExecuteDeps({ orchestrator: buildOrchestrator(provider), contextRepository });
 
     await executeVeoSmokeTest(reservation, deps);
 
-    assert.equal(billingEngine.releaseCalls.length, 1);
-    assert.equal(billingEngine.chargeCalls.length, 0);
-    assert.match((billingEngine.releaseCalls[0] as { reason: string }).reason, /quota exceeded/);
+    assert.equal(provider.generateCalls, 1);
   });
 
-  test("releases the reservation when the upload step itself throws", async () => {
+  test("the real Veo operation id is persisted onto the context as veoGeneration.operationId in state POLLING, before polling starts", async () => {
     const { reservation, contextRepository } = await reserveAndSeed();
-    const orchestrator = new FakeOrchestrator({ jobId: "j1", status: "COMPLETED", provider: "GOOGLE", videoUrl: "https://veo-raw/v.mp4" });
-    const { deps, billingEngine } = buildExecuteDeps({
-      orchestrator,
+    let checkStatusCallsAtPersistTime = -1;
+    const provider = new ScriptedProvider({
+      generate: async () => ({ jobId: "veo-op-persisted", status: "PROCESSING", provider: "GOOGLE" }),
+      checkStatus: async () => {
+        // Inspect persisted state from inside the poll callback — proves
+        // the operationId write happened strictly before any polling.
+        const mid = contextRepository.get(reservation.productionId);
+        checkStatusCallsAtPersistTime = mid?.veoGeneration?.state === "POLLING" && mid.veoGeneration.operationId === "veo-op-persisted" ? 1 : 0;
+        return { jobId: "veo-op-persisted", status: "COMPLETED", provider: "GOOGLE" };
+      },
+      download: async () => ({ jobId: "veo-op-persisted", status: "COMPLETED", provider: "GOOGLE", videoUrl: "https://veo-raw/v.mp4" }),
+    });
+    const { deps } = buildExecuteDeps({ orchestrator: buildOrchestrator(provider), contextRepository });
+
+    await executeVeoSmokeTest(reservation, deps);
+
+    assert.equal(checkStatusCallsAtPersistTime, 1, "operationId must already be persisted with state POLLING before the first poll");
+  });
+});
+
+describe("executeVeoSmokeTest — redelivery with a persisted operation id (3, 4: resumes, never resubmits)", () => {
+  test("redelivery with a persisted operationId does NOT call generate() again", async () => {
+    const { reservation, contextRepository, billingEngine } = await reserveAndSeed();
+    const provider = new ScriptedProvider({
+      checkStatus: async () => ({ jobId: "veo-op-resume", status: "COMPLETED", provider: "GOOGLE" }),
+      download: async () => ({ jobId: "veo-op-resume", status: "COMPLETED", provider: "GOOGLE", videoUrl: "https://veo-raw/resumed.mp4", duration: 8 }),
+    });
+
+    const context = await contextRepository.getOrCreate(reservation.productionId);
+    context.veoGeneration = { state: "POLLING", operationId: "veo-op-resume", startedAt: new Date().toISOString() };
+    await contextRepository.save(context);
+
+    const { deps } = buildExecuteDeps({ orchestrator: buildOrchestrator(provider), billingEngine, contextRepository });
+    const result = await executeVeoSmokeTest(reservation, deps);
+
+    assert.equal(provider.generateCalls, 0, "redelivery must never call generate() when an operationId is already persisted");
+    assert.ok(provider.checkStatusCalls >= 1, "redelivery must resume polling the same operation");
+    assert.equal(result.status, "COMPLETED");
+    assert.equal(result.finalVideoUrl, "https://cloudinary/resumed.mp4");
+  });
+});
+
+describe("executeVeoSmokeTest — terminal context prevents another generation (5)", () => {
+  test("an already-COMPLETED context returns the existing result without calling generate()", async () => {
+    const { reservation, contextRepository, billingEngine } = await reserveAndSeed();
+    const context = await contextRepository.getOrCreate(reservation.productionId);
+    context.finalVideoUrl = "https://cloudinary/already-done.mp4";
+    context.finalVideoMetadata = { durationSeconds: 8, resolution: "720p", format: "mp4", bytes: 123 };
+    await contextRepository.save(context);
+
+    const provider = new ScriptedProvider({});
+    const { deps } = buildExecuteDeps({ orchestrator: buildOrchestrator(provider), billingEngine, contextRepository });
+
+    const result = await executeVeoSmokeTest(reservation, deps);
+
+    assert.equal(provider.generateCalls, 0);
+    assert.equal(result.status, "COMPLETED");
+    assert.equal(result.finalVideoUrl, "https://cloudinary/already-done.mp4");
+    assert.equal(billingEngine.chargeCalls.length, 0, "must not re-charge an already-settled reservation");
+  });
+
+  test("an already-FAILED context returns the existing failure without calling generate()", async () => {
+    const { reservation, contextRepository, billingEngine } = await reserveAndSeed();
+    const context = await contextRepository.getOrCreate(reservation.productionId);
+    context.failure = { stage: "VIDEO_GENERATION" as never, message: "already failed" };
+    await contextRepository.save(context);
+
+    const provider = new ScriptedProvider({});
+    const { deps } = buildExecuteDeps({ orchestrator: buildOrchestrator(provider), billingEngine, contextRepository });
+
+    const result = await executeVeoSmokeTest(reservation, deps);
+
+    assert.equal(provider.generateCalls, 0);
+    assert.equal(result.status, "FAILED");
+    assert.equal(billingEngine.releaseCalls.length, 0, "must not re-release an already-released reservation");
+  });
+});
+
+describe("executeVeoSmokeTest — SUBMITTING with no operation id (6: does not resubmit; 7: does not release blindly)", () => {
+  test("a context stuck at SUBMITTING with no operationId is marked RECOVERY_REQUIRED, not resubmitted", async () => {
+    const { reservation, contextRepository, billingEngine } = await reserveAndSeed();
+    const context = await contextRepository.getOrCreate(reservation.productionId);
+    context.veoGeneration = { state: "SUBMITTING", startedAt: new Date().toISOString() };
+    await contextRepository.save(context);
+
+    const provider = new ScriptedProvider({});
+    const { deps } = buildExecuteDeps({ orchestrator: buildOrchestrator(provider), billingEngine, contextRepository });
+
+    const result = await executeVeoSmokeTest(reservation, deps);
+
+    assert.equal(provider.generateCalls, 0, "must never resubmit when a prior attempt may already have reached Veo");
+    assert.equal(result.status, "RECOVERY_REQUIRED");
+    assert.equal(billingEngine.releaseCalls.length, 0, "must not release credits while the generation's outcome is unknown");
+    assert.equal(billingEngine.chargeCalls.length, 0, "must not charge credits while the generation's outcome is unknown");
+
+    const persisted = contextRepository.get(reservation.productionId);
+    assert.equal(persisted?.veoGeneration?.state, "RECOVERY_REQUIRED");
+  });
+
+  test("a context already marked RECOVERY_REQUIRED returns the same unresolved state on redelivery, without re-attempting anything", async () => {
+    const { reservation, contextRepository, billingEngine } = await reserveAndSeed();
+    const context = await contextRepository.getOrCreate(reservation.productionId);
+    context.veoGeneration = {
+      state: "RECOVERY_REQUIRED",
+      operationId: "veo-op-unknown-fate",
+      startedAt: new Date().toISOString(),
+      recoveryReason: "previously flagged",
+    };
+    await contextRepository.save(context);
+
+    const provider = new ScriptedProvider({});
+    const { deps } = buildExecuteDeps({ orchestrator: buildOrchestrator(provider), billingEngine, contextRepository });
+
+    const result = await executeVeoSmokeTest(reservation, deps);
+
+    assert.equal(provider.generateCalls, 0);
+    assert.equal(provider.checkStatusCalls, 0, "must not attempt to poll either — already flagged for manual review");
+    assert.equal(result.status, "RECOVERY_REQUIRED");
+    assert.equal(result.error, "previously flagged");
+    assert.equal(billingEngine.releaseCalls.length, 0);
+    assert.equal(billingEngine.chargeCalls.length, 0);
+  });
+});
+
+describe("executeVeoSmokeTest — ambiguous vs confirmed failure classification", () => {
+  test("a confirmed pre-generation failure (e.g. invalid request) is released normally, exactly like before", async () => {
+    const { reservation, contextRepository, billingEngine } = await reserveAndSeed();
+    const provider = new ScriptedProvider({
+      generate: async () => {
+        throw new VeoProviderError("INVALID_REQUEST", "Veo rejected the request: bad aspect ratio");
+      },
+    });
+    const { deps } = buildExecuteDeps({ orchestrator: buildOrchestrator(provider), billingEngine, contextRepository });
+
+    const result = await executeVeoSmokeTest(reservation, deps);
+
+    assert.equal(result.status, "FAILED");
+    assert.equal(billingEngine.releaseCalls.length, 1);
+    assert.equal(provider.generateCalls, 1);
+  });
+
+  test("an ambiguous submission failure (e.g. timeout) is marked RECOVERY_REQUIRED, not released", async () => {
+    const { reservation, contextRepository, billingEngine } = await reserveAndSeed();
+    const provider = new ScriptedProvider({
+      generate: async () => {
+        throw new VeoProviderError("TIMEOUT", "Veo request timed out waiting for a response");
+      },
+    });
+    const { deps } = buildExecuteDeps({ orchestrator: buildOrchestrator(provider), billingEngine, contextRepository });
+
+    const result = await executeVeoSmokeTest(reservation, deps);
+
+    assert.equal(result.status, "RECOVERY_REQUIRED");
+    assert.equal(billingEngine.releaseCalls.length, 0);
+    assert.equal(billingEngine.chargeCalls.length, 0);
+  });
+
+  test("a confirmed Veo-reported failure during polling (operation.error, no errorCode) is released normally", async () => {
+    const { reservation, contextRepository, billingEngine } = await reserveAndSeed();
+    const provider = new ScriptedProvider({
+      checkStatus: async () => ({ jobId: "veo-op-2", status: "FAILED", provider: "GOOGLE", error: "content policy violation" }),
+    });
+    const { deps } = buildExecuteDeps({ orchestrator: buildOrchestrator(provider), billingEngine, contextRepository });
+
+    const result = await executeVeoSmokeTest(reservation, deps);
+
+    assert.equal(result.status, "FAILED");
+    assert.equal(billingEngine.releaseCalls.length, 1);
+    assert.match(result.error ?? "", /content policy violation/);
+  });
+
+  test("an ambiguous transport failure during polling (POLLING_FAILED errorCode) is marked RECOVERY_REQUIRED, not released — the unconfirmed counterpart to the confirmed-failure test above", async () => {
+    const { reservation, contextRepository, billingEngine } = await reserveAndSeed();
+    const provider = new ScriptedProvider({
+      checkStatus: async () => {
+        throw new VeoProviderError("POLLING_FAILED", "transient network error");
+      },
+    });
+    const { deps } = buildExecuteDeps({ orchestrator: buildOrchestrator(provider), billingEngine, contextRepository });
+
+    const result = await executeVeoSmokeTest(reservation, deps);
+
+    assert.equal(result.status, "RECOVERY_REQUIRED");
+    assert.equal(billingEngine.releaseCalls.length, 0);
+    assert.equal(billingEngine.chargeCalls.length, 0);
+  });
+
+  test("resumed polling that confirms a real Veo failure releases correctly (9)", async () => {
+    const { reservation, contextRepository, billingEngine } = await reserveAndSeed();
+    const context = await contextRepository.getOrCreate(reservation.productionId);
+    context.veoGeneration = { state: "POLLING", operationId: "veo-op-resume-fail", startedAt: new Date().toISOString() };
+    await contextRepository.save(context);
+
+    const provider = new ScriptedProvider({
+      checkStatus: async () => ({ jobId: "veo-op-resume-fail", status: "FAILED", provider: "GOOGLE", error: "quota exceeded" }),
+    });
+    const { deps } = buildExecuteDeps({ orchestrator: buildOrchestrator(provider), billingEngine, contextRepository });
+
+    const result = await executeVeoSmokeTest(reservation, deps);
+
+    assert.equal(provider.generateCalls, 0);
+    assert.equal(result.status, "FAILED");
+    assert.equal(billingEngine.releaseCalls.length, 1);
+    assert.match(result.error ?? "", /quota exceeded/);
+  });
+});
+
+describe("executeVeoSmokeTest — Cloudinary failure (10: does not cause another Veo generation)", () => {
+  test("an upload throw releases the reservation without ever calling generate() a second time", async () => {
+    const { reservation, contextRepository, billingEngine } = await reserveAndSeed();
+    const provider = new ScriptedProvider({
+      checkStatus: async () => ({ jobId: "veo-op-3", status: "COMPLETED", provider: "GOOGLE" }),
+      download: async () => ({ jobId: "veo-op-3", status: "COMPLETED", provider: "GOOGLE", videoUrl: "https://veo-raw/v.mp4" }),
+    });
+    const { deps } = buildExecuteDeps({
+      orchestrator: buildOrchestrator(provider),
+      billingEngine,
       contextRepository,
       uploadVideo: async () => {
         throw new Error("Cloudinary upload failed");
@@ -213,6 +464,7 @@ describe("executeVeoSmokeTest — billing", () => {
 
     const result = await executeVeoSmokeTest(reservation, deps);
 
+    assert.equal(provider.generateCalls, 1);
     assert.equal(result.status, "FAILED");
     assert.equal(billingEngine.releaseCalls.length, 1);
     assert.equal(billingEngine.chargeCalls.length, 0);
@@ -220,160 +472,91 @@ describe("executeVeoSmokeTest — billing", () => {
   });
 });
 
-describe("executeVeoSmokeTest — production context", () => {
-  test("on success, writes finalVideoUrl and finalVideoMetadata onto the context", async () => {
-    const { reservation, contextRepository } = await reserveAndSeed();
-    const orchestrator = new FakeOrchestrator({ jobId: "j1", status: "COMPLETED", provider: "GOOGLE", videoUrl: "https://veo-raw/v.mp4", duration: 8, resolution: "720p" });
-    const { deps } = buildExecuteDeps({ orchestrator, contextRepository });
-
-    const result = await executeVeoSmokeTest(reservation, deps);
-
-    const context = contextRepository.get(reservation.productionId);
-    assert.equal(context?.finalVideoUrl, result.finalVideoUrl);
-    assert.equal(context?.finalVideoMetadata?.durationSeconds, 8);
-    assert.equal(context?.finalVideoMetadata?.resolution, "720p");
-  });
-
-  test("on failure, writes context.failure with the VideoGeneration stage and a message", async () => {
-    const { reservation, contextRepository } = await reserveAndSeed();
-    const orchestrator = new FakeOrchestrator({ jobId: "j1", status: "FAILED", provider: "GOOGLE", error: "operation failed" });
-    const { deps } = buildExecuteDeps({ orchestrator, contextRepository });
-
-    await executeVeoSmokeTest(reservation, deps);
-
-    const context = contextRepository.get(reservation.productionId);
-    assert.equal(context?.failure?.stage, "VIDEO_GENERATION");
-    assert.match(context?.failure?.message ?? "", /operation failed/);
-  });
-});
-
-describe("executeVeoSmokeTest — provider invocation, no-retry, no-fallback", () => {
-  test("calls the orchestrator's renderAndWait exactly once on success", async () => {
-    const { reservation, contextRepository } = await reserveAndSeed();
-    const orchestrator = new FakeOrchestrator({ jobId: "j1", status: "COMPLETED", provider: "GOOGLE", videoUrl: "https://veo-raw/v.mp4" });
-    const { deps } = buildExecuteDeps({ orchestrator, contextRepository });
-
-    await executeVeoSmokeTest(reservation, deps);
-
-    assert.equal(orchestrator.renderAndWaitCalls.length, 1);
-  });
-
-  test("calls the orchestrator's renderAndWait exactly once on failure — no automatic retry", async () => {
-    const { reservation, contextRepository } = await reserveAndSeed();
-    const orchestrator = new FakeOrchestrator({ jobId: "j1", status: "FAILED", provider: "GOOGLE", error: "boom" });
-    const { deps } = buildExecuteDeps({ orchestrator, contextRepository });
-
-    await executeVeoSmokeTest(reservation, deps);
-
-    assert.equal(orchestrator.renderAndWaitCalls.length, 1);
-  });
-
-  test("passes the exact prompt/aspectRatio/durationSeconds from the reservation through to the render request", async () => {
-    const prompt = "Create a premium cinematic advertisement for running shoes.".padEnd(70, ".");
-    const { reservation, contextRepository } = await reserveAndSeed({ params: { prompt, aspectRatio: "16:9", durationSeconds: 6 } });
-    const orchestrator = new FakeOrchestrator({ jobId: "j1", status: "COMPLETED", provider: "GOOGLE", videoUrl: "https://veo-raw/v.mp4" });
-    const { deps } = buildExecuteDeps({ orchestrator, contextRepository });
-
-    await executeVeoSmokeTest(reservation, deps);
-
-    assert.equal(orchestrator.renderAndWaitCalls[0].prompt, prompt);
-    assert.equal(orchestrator.renderAndWaitCalls[0].aspectRatio, "16:9");
-    assert.equal(orchestrator.renderAndWaitCalls[0].durationSeconds, 6);
-  });
-
-  test("never charges or releases against any provider id other than GOOGLE", async () => {
-    const { reservation, contextRepository } = await reserveAndSeed();
-    const orchestrator = new FakeOrchestrator({ jobId: "j1", status: "COMPLETED", provider: "GOOGLE", videoUrl: "https://veo-raw/v.mp4" });
-    const { deps, billingEngine } = buildExecuteDeps({ orchestrator, contextRepository });
-
-    await executeVeoSmokeTest(reservation, deps);
-
-    const providerIds = billingEngine.chargeCalls.map((c) => (c as { input: { providerId: string } }).input.providerId);
-    assert.ok(providerIds.every((id) => id === "GOOGLE"));
-  });
-});
-
-describe("executeVeoSmokeTest — idempotency guard (BullMQ stalled-job redelivery)", () => {
-  test("a second execution of an already-COMPLETED production does not call renderAndWait or charge again", async () => {
+describe("executeVeoSmokeTest — normal BullMQ retry cannot duplicate generation (11)", () => {
+  test("invoking executeVeoSmokeTest twice in a row for the same job (simulating BullMQ redelivery) only ever calls generate() once", async () => {
     const { reservation, contextRepository, billingEngine } = await reserveAndSeed();
-    const orchestrator = new FakeOrchestrator({ jobId: "j1", status: "COMPLETED", provider: "GOOGLE", videoUrl: "https://veo-raw/v.mp4", duration: 8 });
+    const provider = new ScriptedProvider({
+      checkStatus: async () => ({ jobId: "veo-op-4", status: "COMPLETED", provider: "GOOGLE" }),
+      download: async () => ({ jobId: "veo-op-4", status: "COMPLETED", provider: "GOOGLE", videoUrl: "https://veo-raw/v.mp4", duration: 8 }),
+    });
+    const orchestrator = buildOrchestrator(provider);
     const { deps } = buildExecuteDeps({ orchestrator, billingEngine, contextRepository });
 
     const first = await executeVeoSmokeTest(reservation, deps);
-    // Simulates BullMQ redelivering the same job (e.g. after a lock stall)
-    // to another worker — same productionId, same reservation, invoked a
-    // second time.
     const second = await executeVeoSmokeTest(reservation, deps);
 
-    assert.equal(orchestrator.renderAndWaitCalls.length, 1, "renderAndWait must not be called a second time");
-    assert.equal(billingEngine.chargeCalls.length, 1, "the reservation must not be charged a second time");
+    assert.equal(provider.generateCalls, 1);
+    assert.equal(billingEngine.chargeCalls.length, 1);
     assert.equal(second.status, "COMPLETED");
     assert.equal(second.finalVideoUrl, first.finalVideoUrl);
   });
-
-  test("a second execution of an already-FAILED production does not call renderAndWait or release again", async () => {
-    const { reservation, contextRepository, billingEngine } = await reserveAndSeed();
-    const orchestrator = new FakeOrchestrator({ jobId: "j1", status: "FAILED", provider: "GOOGLE", error: "quota exceeded" });
-    const { deps } = buildExecuteDeps({ orchestrator, billingEngine, contextRepository });
-
-    const first = await executeVeoSmokeTest(reservation, deps);
-    const second = await executeVeoSmokeTest(reservation, deps);
-
-    assert.equal(orchestrator.renderAndWaitCalls.length, 1, "renderAndWait must not be called a second time");
-    assert.equal(billingEngine.releaseCalls.length, 1, "the reservation must not be released a second time");
-    assert.equal(second.status, "FAILED");
-    assert.equal(second.error, first.error);
-  });
-
-  test("checks getPersisted() (a durable, cross-instance-safe read) before invoking renderAndWait — not an in-process cache", async () => {
-    const { reservation, contextRepository, billingEngine } = await reserveAndSeed();
-    const orchestrator = new FakeOrchestrator({ jobId: "j1", status: "COMPLETED", provider: "GOOGLE", videoUrl: "https://veo-raw/v.mp4" });
-    await executeVeoSmokeTest(reservation, buildExecuteDeps({ orchestrator, billingEngine, contextRepository }).deps);
-
-    // A brand-new orchestrator/dependency set standing in for a second,
-    // independent worker process that shares only the durable context
-    // repository — proves the guard reads from shared/durable state, not
-    // from anything held in the first execution's closures.
-    const secondOrchestrator = new FakeOrchestrator({ jobId: "j2", status: "COMPLETED", provider: "GOOGLE", videoUrl: "https://veo-raw/other.mp4" });
-    const { deps: secondDeps } = buildExecuteDeps({ orchestrator: secondOrchestrator, billingEngine, contextRepository });
-
-    const result = await executeVeoSmokeTest(reservation, secondDeps);
-
-    assert.equal(secondOrchestrator.renderAndWaitCalls.length, 0);
-    assert.equal(result.status, "COMPLETED");
-  });
 });
 
-describe("executeVeoSmokeTest — crash/redelivery cannot permanently strand HELD credits", () => {
-  test("a redelivered job for a production that already failed still resolves to FAILED without leaving it unresolved", async () => {
+describe("executeVeoSmokeTest — Worker A crashes mid-poll, Worker B resumes (the most important test)", () => {
+  test("Worker A submits Veo and persists the operation id, then 'crashes' before polling; Worker B (a separate RenderOrchestrator instance, sharing only the durable context/billing state) resumes polling the same operation to completion without calling generate() again", async () => {
     const { reservation, contextRepository, billingEngine } = await reserveAndSeed();
-    const orchestrator = new FakeOrchestrator({ jobId: "j1", status: "FAILED", provider: "GOOGLE", error: "internal error" });
-    const { deps } = buildExecuteDeps({ orchestrator, billingEngine, contextRepository });
 
-    await executeVeoSmokeTest(reservation, deps);
-    assert.equal(billingEngine.releaseCalls.length, 1);
-
-    // Redelivery: a second worker picks up the same job after the first's
-    // lock stalled. The reservation is already released; the guard must
-    // return the recorded failure rather than attempting to release an
-    // already-released reservation again or re-running Veo.
-    const redelivered = await executeVeoSmokeTest(reservation, deps);
-    assert.equal(redelivered.status, "FAILED");
-    assert.equal(billingEngine.releaseCalls.length, 1);
-    assert.equal(orchestrator.renderAndWaitCalls.length, 1);
-  });
-
-  test("an unexpected throw from the render call itself still releases the reservation rather than leaving it HELD", async () => {
-    const { reservation, contextRepository, billingEngine } = await reserveAndSeed();
-    const orchestrator = new FakeOrchestrator(async () => {
-      throw new Error("network error mid-poll");
+    // The real Veo API — same underlying service reachable from both
+    // "workers," exactly as it would be in production (Veo doesn't care
+    // which of our processes calls it).
+    const veoBackend = new ScriptedProvider({
+      generate: async () => ({ jobId: "veo-operation-xyz", status: "PROCESSING", provider: "GOOGLE" }),
+      checkStatus: async () => ({ jobId: "veo-operation-xyz", status: "COMPLETED", provider: "GOOGLE" }),
+      download: async () => ({
+        jobId: "veo-operation-xyz",
+        status: "COMPLETED",
+        provider: "GOOGLE",
+        videoUrl: "https://veo-raw/resumed.mp4",
+        duration: 8,
+        resolution: "720p",
+      }),
     });
-    const { deps } = buildExecuteDeps({ orchestrator, billingEngine, contextRepository });
 
-    const result = await executeVeoSmokeTest(reservation, deps);
+    // --- Worker A: its own RenderOrchestrator instance (own empty
+    // in-memory job map), standing in for one Node process. It submits
+    // Veo directly (the same call executeVeoSmokeTest's fresh-submit path
+    // makes internally) and persists exactly what markPolling() would —
+    // then "crashes": nothing further ever runs on this instance. A real
+    // SIGKILL mid-poll leaves precisely this durable state behind (the
+    // POLLING write already completed; nothing after it ever got the
+    // chance to run), which is what this simulates. ---
+    const workerAOrchestrator = buildOrchestrator(veoBackend);
+    const submitted = await workerAOrchestrator.render({
+      prompt: reservation.prompt,
+      aspectRatio: reservation.aspectRatio,
+      durationSeconds: reservation.durationSeconds,
+    });
+    assert.equal(submitted.status, "PROCESSING");
+    const operationId = submitted.metadata?.providerJobId as string;
+    assert.equal(operationId, "veo-operation-xyz");
+    assert.equal(veoBackend.generateCalls, 1);
 
-    assert.equal(result.status, "FAILED");
-    assert.equal(billingEngine.releaseCalls.length, 1);
-    assert.match(result.error ?? "", /network error mid-poll/);
+    const contextAfterCrash = await contextRepository.getOrCreate(reservation.productionId);
+    contextAfterCrash.veoGeneration = { state: "POLLING", operationId, startedAt: new Date().toISOString() };
+    await contextRepository.save(contextAfterCrash);
+
+    // --- Worker B: a completely separate RenderOrchestrator instance
+    // (simulating BullMQ redelivering the job to a different worker
+    // process after the stalled-job checker notices Worker A never
+    // renewed its lock), driven through the harness's real,
+    // production-path executeVeoSmokeTest(). ---
+    const workerBOrchestrator = buildOrchestrator(veoBackend);
+    const { deps: workerBDeps } = buildExecuteDeps({ orchestrator: workerBOrchestrator, billingEngine, contextRepository });
+
+    const result = await executeVeoSmokeTest(reservation, workerBDeps);
+
+    assert.equal(
+      veoBackend.generateCalls,
+      1,
+      "Worker B must NOT call generate() again — that would be a second, duplicate, paid Veo generation"
+    );
+    assert.ok(veoBackend.checkStatusCalls >= 1, "Worker B must actually resume polling the operation Worker A submitted");
+    assert.equal(result.status, "COMPLETED");
+    assert.equal(result.finalVideoUrl, "https://cloudinary/resumed.mp4");
+    assert.equal(billingEngine.chargeCalls.length, 1, "the reservation must be settled exactly once, by Worker B");
+    assert.equal(billingEngine.releaseCalls.length, 0);
+
+    const finalContext = contextRepository.get(reservation.productionId);
+    assert.equal(finalContext?.finalVideoUrl, "https://cloudinary/resumed.mp4");
   });
 });

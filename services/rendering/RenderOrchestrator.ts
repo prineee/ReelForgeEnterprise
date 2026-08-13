@@ -28,6 +28,21 @@
  * job's lifetime. This is what lets checkStatus()/download() below take
  * only the orchestrator's jobId — callers never need to know which
  * provider handled a job or what that provider calls its own operations.
+ *
+ * That tracking (`this.jobs`) is an in-memory Map — it does not survive a
+ * process restart, and a fresh RenderOrchestrator instance starts with an
+ * empty one. render()'s returned RenderResult now also exposes the raw
+ * provider job id via `metadata.providerJobId` (previously discarded —
+ * see RenderResult.ts's own doc comment: provider-specific raw ids belong
+ * in `metadata`, not as a new top-level field) specifically so a caller
+ * that needs to survive a crash can persist it durably, and resumeJob()
+ * lets a later, unrelated RenderOrchestrator instance re-seed `this.jobs`
+ * from that persisted id and resume polling via checkStatus()/download()
+ * — without ever calling render() (and therefore generate()) again. See
+ * services/internal/VeoSmokeTestHarness.ts's executeVeoSmokeTest() for
+ * the concrete case this exists for: a worker crash between "Veo
+ * generation submitted" and "result persisted" must not cause a second,
+ * duplicate, paid generate() call on retry/redelivery.
  */
 
 import type {
@@ -81,9 +96,24 @@ export class RenderOrchestrator {
     }
 
     this.jobs.set(jobId, { providerId, providerJobId: result.jobId });
-    const unified = this.unify(result, jobId, providerId);
+    const unified = this.unify(result, jobId, providerId, result.jobId);
     this.recordMetric(unified, providerId, startedAt, request);
     return unified;
+  }
+
+  /**
+   * Re-seeds `this.jobs` for a job this RenderOrchestrator instance never
+   * itself submitted — the durable-recovery counterpart to render(). A
+   * caller that persisted `providerJobId` (from a prior render() call's
+   * `metadata.providerJobId`, on a possibly different RenderOrchestrator
+   * instance/process) can call this after a restart, then use the normal
+   * checkStatus()/download()/pollUntilTerminal() methods with `jobId`
+   * exactly as if this instance had submitted the job itself. Does not
+   * call any provider method — purely local bookkeeping, so it cannot
+   * itself trigger a duplicate generate() call.
+   */
+  resumeJob(jobId: string, providerId: ProviderId, providerJobId: string): void {
+    this.jobs.set(jobId, { providerId, providerJobId });
   }
 
   /**
@@ -102,7 +132,7 @@ export class RenderOrchestrator {
     try {
       const provider = this.registry.resolve(job.providerId);
       const result = await provider.checkStatus(job.providerJobId);
-      return this.unify(result, jobId, job.providerId);
+      return this.unify(result, jobId, job.providerId, job.providerJobId);
     } catch (error) {
       return this.toFailedResult(jobId, job.providerId, error);
     }
@@ -114,7 +144,7 @@ export class RenderOrchestrator {
     try {
       const provider = this.registry.resolve(job.providerId);
       const result = await provider.download(job.providerJobId);
-      return this.unify(result, jobId, job.providerId);
+      return this.unify(result, jobId, job.providerId, job.providerJobId);
     } catch (error) {
       return this.toFailedResult(jobId, job.providerId, error);
     }
@@ -137,24 +167,39 @@ export class RenderOrchestrator {
     context?: ProviderSelectionContext,
     options?: RenderAndWaitOptions
   ): Promise<RenderResult> {
-    const pollIntervalMs = options?.pollIntervalMs ?? 5000;
-    const maxAttempts = options?.maxAttempts ?? 36; // 3 minutes at the default interval
-
-    let result = await this.render(request, context);
+    const result = await this.render(request, context);
     if (result.status === "FAILED") return result;
     if (result.status === "COMPLETED") return this.ensureDownloaded(result);
 
+    return this.pollUntilTerminal(result.jobId, options);
+  }
+
+  /**
+   * The poll -> terminal-result half of renderAndWait(), extracted so a
+   * caller resuming a job via resumeJob() (no render()/generate() call in
+   * this process) can drive it to completion the same way — same
+   * behavior, same options, same "never throws" contract, just without
+   * the initial submit. renderAndWait() itself is unchanged in behavior:
+   * it still submits via render() first, exactly as before, and calls
+   * this only for the identical "wait for a non-terminal submit result"
+   * case it already handled inline.
+   */
+  async pollUntilTerminal(jobId: string, options?: RenderAndWaitOptions): Promise<RenderResult> {
+    const pollIntervalMs = options?.pollIntervalMs ?? 5000;
+    const maxAttempts = options?.maxAttempts ?? 36; // 3 minutes at the default interval
+
+    let result: RenderResult | undefined;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       await this.sleep(pollIntervalMs);
-      result = await this.checkStatus(result.jobId);
+      result = await this.checkStatus(jobId);
       if (result.status === "FAILED") return result;
       if (result.status === "COMPLETED") return this.ensureDownloaded(result);
     }
 
     return {
-      jobId: result.jobId,
+      jobId,
       status: "FAILED",
-      provider: result.provider,
+      provider: result?.provider ?? this.jobs.get(jobId)?.providerId ?? "",
       error: `Render did not complete within ${maxAttempts} poll attempts (${pollIntervalMs}ms interval).`,
     };
   }
@@ -168,8 +213,14 @@ export class RenderOrchestrator {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
-  private unify(result: RenderResult, jobId: string, providerId: ProviderId): RenderResult {
-    return { ...result, jobId, provider: providerId };
+  /** `providerJobId`, when given, is exposed via `metadata.providerJobId` — see this file's header for why (durable-recovery persistence, resumeJob()). */
+  private unify(result: RenderResult, jobId: string, providerId: ProviderId, providerJobId?: string): RenderResult {
+    return {
+      ...result,
+      jobId,
+      provider: providerId,
+      metadata: providerJobId ? { ...result.metadata, providerJobId } : result.metadata,
+    };
   }
 
   /**

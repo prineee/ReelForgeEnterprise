@@ -112,6 +112,37 @@ export interface ProductionContext {
   };
   /** Set when a stage throws — see ProductionFailure. Undefined means no failure has occurred. */
   failure?: ProductionFailure;
+  /**
+   * Tracks an in-flight or ambiguously-resolved external Veo generation
+   * across process crashes and BullMQ job redelivery — see
+   * services/internal/VeoSmokeTestHarness.ts's executeVeoSmokeTest() for
+   * why this exists (a worker crash between "Veo generation submitted"
+   * and "result persisted" must not cause a second, duplicate, paid
+   * generate() call on retry/redelivery).
+   *
+   *   SUBMITTING       — about to call, or calling, the provider's
+   *                       generate(); no operation id is known yet.
+   *   POLLING           — generate() returned a real provider operation
+   *                       id (operationId), persisted before any polling
+   *                       began. Safe to resume polling from operationId
+   *                       alone — never re-call generate().
+   *   RECOVERY_REQUIRED — the generation's true outcome at the provider
+   *                       could not be confirmed (a crash left this at
+   *                       SUBMITTING with no operationId, or a
+   *                       transport-level error made a POLLING attempt's
+   *                       result ambiguous). Credits are neither consumed
+   *                       nor released in this state, and generation is
+   *                       never retried automatically — see
+   *                       recoveryReason and resolve manually by checking
+   *                       the provider/cloud console against operationId
+   *                       (if present).
+   */
+  veoGeneration?: {
+    state: "SUBMITTING" | "POLLING" | "RECOVERY_REQUIRED";
+    operationId?: string;
+    startedAt: string;
+    recoveryReason?: string;
+  };
 }
 
 /**
