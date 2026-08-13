@@ -50,6 +50,19 @@ try {
       }
     }
 
+    /**
+     * M1 fix: RenderOrchestrator.pollUntilTerminal()'s own default (5s x
+     * 36 attempts = 3 minutes) is tuned for Movie Studio's per-scene calls
+     * and is deliberately NOT changed globally here (Movie Studio still
+     * depends on that default) — this smoke test instead passes its own,
+     * longer, explicit budget: 5s x 180 attempts = 15 minutes, matching a
+     * real Veo 3.1 generation's actual expected duration with real
+     * margin. See VEO_SMOKE_TEST_LOCK_DURATION_MS below for why the
+     * worker's own BullMQ lock stays safely above this.
+     */
+    const VEO_SMOKE_TEST_POLL_INTERVAL_MS = 5000
+    const VEO_SMOKE_TEST_MAX_POLL_ATTEMPTS = 180 // 15 minutes at the interval above
+
     const processVeoSmokeTestJob = async (job) => {
       const { productionId, userId, reservationId, provider, prompt, aspectRatio, durationSeconds } = job.data
       console.log(`[veoSmokeTestWorker] Job ${job.id}: starting smoke test "${productionId}" for user "${userId}"`)
@@ -71,6 +84,7 @@ try {
           billingEngine: createDefaultBillingEngine(),
           contextRepository: getSharedProductionContextRepository(),
           orchestrator,
+          pollOptions: { pollIntervalMs: VEO_SMOKE_TEST_POLL_INTERVAL_MS, maxAttempts: VEO_SMOKE_TEST_MAX_POLL_ATTEMPTS },
           uploadVideo: async (sourceUrl, publicId) => {
             const uploaded = await cloudinaryClient.upload({
               sourceUrl,
@@ -116,17 +130,23 @@ try {
       return result
     }
 
+    // Must safely exceed VEO_SMOKE_TEST_MAX_POLL_ATTEMPTS x
+    // VEO_SMOKE_TEST_POLL_INTERVAL_MS (15 minutes) — that's the longest
+    // this job can spend just polling, before download + Cloudinary
+    // upload + billing + the (bounded, ~3s worst case) context-save retry
+    // from the M2 fix still need to run. 25 minutes gives 10 minutes of
+    // margin over the poll budget for all of that. If this ever drops
+    // below the poll budget, BullMQ's stalled-job checker could redeliver
+    // a job that is still genuinely, healthily polling — the
+    // in-flight-generation state machine in VeoSmokeTestHarness.ts
+    // prevents that from causing a second paid Veo call, but it would
+    // still be a spurious/wasteful redelivery worth avoiding.
+    const VEO_SMOKE_TEST_LOCK_DURATION_MS = 25 * 60 * 1000
+
     veoSmokeTestWorker = new Worker('veo-smoke-test', processVeoSmokeTestJob, {
       connection: { url: process.env.REDIS_URL },
       concurrency: 1,
-      // A real Veo generation (submit, poll, download) can run for several
-      // minutes — BullMQ's default lock (30s) would let the stalled-job
-      // checker consider this job abandoned and redeliver it to another
-      // worker mid-run. lockDuration is the ceiling on one processing
-      // attempt before BullMQ considers the lock stale; the idempotency
-      // guard inside executeVeoSmokeTest() is the actual backstop against
-      // a second paid Veo call if that ever happens anyway.
-      lockDuration: 20 * 60 * 1000,
+      lockDuration: VEO_SMOKE_TEST_LOCK_DURATION_MS,
     })
 
     veoSmokeTestWorker.on('completed', (job, result) => {

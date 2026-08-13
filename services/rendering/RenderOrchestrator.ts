@@ -201,6 +201,16 @@ export class RenderOrchestrator {
       status: "FAILED",
       provider: result?.provider ?? this.jobs.get(jobId)?.providerId ?? "",
       error: `Render did not complete within ${maxAttempts} poll attempts (${pollIntervalMs}ms interval).`,
+      // Exhausting the poll budget is not a confirmed answer from the
+      // provider — the job may still be running, or may already have
+      // completed, at the moment polling gave up. metadata.errorCode
+      // (same convention toFailedResult() already uses for a thrown
+      // classified error) lets a caller like
+      // services/internal/VeoSmokeTestHarness.ts distinguish this
+      // ambiguous "we stopped watching" outcome from a genuine
+      // operation.error the provider reported — only the latter is safe
+      // to treat as a confirmed failure.
+      metadata: { errorCode: "TIMEOUT" },
     };
   }
 

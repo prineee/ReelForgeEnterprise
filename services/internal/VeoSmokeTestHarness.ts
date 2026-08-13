@@ -389,44 +389,134 @@ async function finishGeneration(
     return recoveryRequired(deps, job, result.error ?? "Could not confirm the Veo operation's outcome.");
   }
 
+  // From here, the generation is CONFIRMED complete (a real videoUrl is in
+  // hand) — upload and billing are the two remaining steps that can still
+  // fail *before* money actually changes hands, so both remain safe to
+  // release against, exactly as before this fix.
+  let upload: VeoSmokeTestUploadResult;
   try {
-    const upload = await deps.uploadVideo(result.videoUrl, `veo-smoke-test-${job.productionId}`);
+    upload = await deps.uploadVideo(result.videoUrl, `veo-smoke-test-${job.productionId}`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return recordFailure(deps, job, message, undefined);
+  }
 
+  const finalVideoMetadata = {
+    durationSeconds: result.duration ?? job.durationSeconds,
+    resolution: result.resolution ?? "",
+    format: upload.format ?? "mp4",
+    bytes: upload.bytes ?? 0,
+  };
+
+  try {
     await deps.billingEngine.chargeUsage(job.reservationId, job.userId, job.productionId, {
       category: UsageCategory.Videos,
       providerId: job.provider,
       videoLengthSeconds: result.duration ?? job.durationSeconds,
     });
-
-    const finalVideoMetadata = {
-      durationSeconds: result.duration ?? job.durationSeconds,
-      resolution: result.resolution ?? "",
-      format: upload.format ?? "mp4",
-      bytes: upload.bytes ?? 0,
-    };
-
-    const successContext = await deps.contextRepository.getOrCreate(job.productionId);
-    successContext.finalVideoUrl = upload.secureUrl;
-    successContext.finalVideoMetadata = finalVideoMetadata;
-    await deps.contextRepository.save(successContext);
-
-    return {
-      productionId: job.productionId,
-      status: "COMPLETED",
-      reservationId: job.reservationId,
-      provider: job.provider,
-      requestedDurationSeconds: job.durationSeconds,
-      finalVideoUrl: upload.secureUrl,
-      finalVideoMetadata,
-    };
   } catch (error) {
-    // The generation itself is confirmed complete at this point (a real
-    // videoUrl is in hand) — an upload/charge/persist failure here is not
-    // an "unknown provider state," it's a known-successful generation we
-    // failed to deliver. Safe to release, exactly as before.
+    // consume_credits threw -> per that RPC's contract, no partial charge
+    // was applied (it's the same all-or-nothing guarantee release/consume
+    // already rely on elsewhere in this file). The reservation is still
+    // HELD. Safe to release.
     const message = error instanceof Error ? error.message : String(error);
     return recordFailure(deps, job, message, undefined);
   }
+
+  // Billing is now CONFIRMED consumed. Every remaining failure mode from
+  // here on must never release or re-consume the reservation, and must
+  // never re-invoke Veo — see persistSuccessResult() for how a persist
+  // failure at this exact point is handled without falsely reporting an
+  // ordinary FAILED production.
+  return persistSuccessResult(deps, job, upload.secureUrl, finalVideoMetadata);
+}
+
+const CONTEXT_SAVE_RETRY_ATTEMPTS = 3;
+const CONTEXT_SAVE_RETRY_DELAY_MS = 1000;
+
+/**
+ * Persists the final successful result, with a small bounded retry
+ * (contextRepository.getOrCreate()+save() is a plain upsert keyed by
+ * productionId — retrying it any number of times is always safe: it
+ * never re-invokes Veo, never touches billing again, and never produces
+ * a duplicate record). If every retry fails (e.g. a sustained Supabase
+ * outage, not a single transient blip), this does NOT report an ordinary
+ * FAILED production — billing was already confirmed consumed above, so
+ * releasing or silently downgrading to FAILED would misrepresent a real,
+ * paid, successful generation as a loss. Instead it marks
+ * RECOVERY_REQUIRED, preserving finalVideoUrl/finalVideoMetadata/
+ * operationId in both the returned result (so the caller's own logs
+ * capture them even if this fallback save also fails) and a best-effort
+ * context write, for a human to reconcile.
+ */
+async function persistSuccessResult(
+  deps: VeoSmokeTestExecuteDependencies,
+  job: VeoSmokeTestReservation,
+  finalVideoUrl: string,
+  finalVideoMetadata: NonNullable<ProductionContext["finalVideoMetadata"]>
+): Promise<VeoSmokeTestResult> {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < CONTEXT_SAVE_RETRY_ATTEMPTS; attempt++) {
+    try {
+      const successContext = await deps.contextRepository.getOrCreate(job.productionId);
+      successContext.finalVideoUrl = finalVideoUrl;
+      successContext.finalVideoMetadata = finalVideoMetadata;
+      await deps.contextRepository.save(successContext);
+
+      return {
+        productionId: job.productionId,
+        status: "COMPLETED",
+        reservationId: job.reservationId,
+        provider: job.provider,
+        requestedDurationSeconds: job.durationSeconds,
+        finalVideoUrl,
+        finalVideoMetadata,
+      };
+    } catch (error) {
+      lastError = error;
+      if (attempt < CONTEXT_SAVE_RETRY_ATTEMPTS - 1) {
+        await sleep(CONTEXT_SAVE_RETRY_DELAY_MS);
+      }
+    }
+  }
+
+  const message = lastError instanceof Error ? lastError.message : String(lastError);
+  const recoveryReason = `Veo generation succeeded and billing was consumed, but the final result could not be durably saved after ${CONTEXT_SAVE_RETRY_ATTEMPTS} attempts: ${message}`;
+
+  // Best-effort — if the repository is genuinely down, this write may
+  // also fail, but the returned VeoSmokeTestResult below still carries
+  // every recoverable field regardless, so nothing is lost from the
+  // caller's (the worker's) own logs even in that case.
+  await deps.contextRepository
+    .getOrCreate(job.productionId)
+    .then(async (context) => {
+      context.finalVideoUrl = finalVideoUrl;
+      context.finalVideoMetadata = finalVideoMetadata;
+      context.veoGeneration = {
+        state: "RECOVERY_REQUIRED",
+        operationId: context.veoGeneration?.operationId,
+        startedAt: context.veoGeneration?.startedAt ?? new Date().toISOString(),
+        recoveryReason,
+      };
+      await deps.contextRepository.save(context);
+    })
+    .catch(() => {});
+
+  return {
+    productionId: job.productionId,
+    status: "RECOVERY_REQUIRED",
+    reservationId: job.reservationId,
+    provider: job.provider,
+    requestedDurationSeconds: job.durationSeconds,
+    finalVideoUrl,
+    finalVideoMetadata,
+    error: recoveryReason,
+  };
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function markSubmitting(deps: VeoSmokeTestExecuteDependencies, job: VeoSmokeTestReservation): Promise<void> {

@@ -31,6 +31,7 @@ import type {
   VeoSmokeTestUploadResult,
 } from "./VeoSmokeTestHarness";
 import { InMemoryProductionContextRepository } from "../infrastructure/ProductionContextRepository";
+import type { ProductionContextRepository, ProductionContext } from "../infrastructure/ProductionContextRepository";
 import { UsageCategory } from "../billing/BillingTypes";
 import { RenderOrchestrator } from "../rendering/RenderOrchestrator";
 import { ProviderRegistry } from "../rendering/ProviderRegistry";
@@ -118,6 +119,44 @@ function buildOrchestrator(provider: RenderProvider): RenderOrchestrator {
   return new RenderOrchestrator(registry, new FixedProviderSelector());
 }
 
+/**
+ * Wraps a real InMemoryProductionContextRepository, making save() throw
+ * for specific call numbers (simulating a transient Supabase blip on a
+ * chosen save) before delegating normally — used for the M2
+ * (success-persistence-failure) tests below.
+ *
+ * A full fresh-submission-to-COMPLETED run makes exactly three save()
+ * calls before any retry: #1 markSubmitting(), #2 markPolling(), then
+ * #3+ persistSuccessResult()'s own (bounded, self-retried) attempts. To
+ * simulate a save failure specifically at the *final persistence* step —
+ * the scenario M2 is about — shouldFail must target call #3 onward, not
+ * #1/#2 (failing those instead would simply fail the job before Veo is
+ * ever called, an unrelated, already-covered scenario).
+ */
+class FlakyContextRepository implements ProductionContextRepository {
+  saveCalls = 0;
+  constructor(private readonly inner: InMemoryProductionContextRepository, private readonly shouldFail: (callNumber: number) => boolean) {}
+  get(productionId: string): ProductionContext | undefined {
+    return this.inner.get(productionId);
+  }
+  list(): ProductionContext[] {
+    return this.inner.list();
+  }
+  async getOrCreate(productionId: string): Promise<ProductionContext> {
+    return this.inner.getOrCreate(productionId);
+  }
+  async getPersisted(productionId: string): Promise<ProductionContext | undefined> {
+    return this.inner.getPersisted(productionId);
+  }
+  async save(context: ProductionContext): Promise<void> {
+    this.saveCalls += 1;
+    if (this.shouldFail(this.saveCalls)) {
+      throw new Error(`Simulated transient context-save failure (attempt ${this.saveCalls})`);
+    }
+    return this.inner.save(context);
+  }
+}
+
 function buildReserveDeps(overrides: {
   billingEngine?: FakeBillingEngine;
   contextRepository?: InMemoryProductionContextRepository;
@@ -134,9 +173,9 @@ function buildReserveDeps(overrides: {
 function buildExecuteDeps(overrides: {
   orchestrator: RenderOrchestrator;
   billingEngine?: FakeBillingEngine;
-  contextRepository?: InMemoryProductionContextRepository;
+  contextRepository?: ProductionContextRepository;
   uploadVideo?: (sourceUrl: string, publicId: string) => Promise<VeoSmokeTestUploadResult>;
-}): { deps: VeoSmokeTestExecuteDependencies; billingEngine: FakeBillingEngine; contextRepository: InMemoryProductionContextRepository } {
+}): { deps: VeoSmokeTestExecuteDependencies; billingEngine: FakeBillingEngine; contextRepository: ProductionContextRepository } {
   const billingEngine = overrides.billingEngine ?? new FakeBillingEngine();
   const contextRepository = overrides.contextRepository ?? new InMemoryProductionContextRepository();
   const deps: VeoSmokeTestExecuteDependencies = {
@@ -558,5 +597,163 @@ describe("executeVeoSmokeTest — Worker A crashes mid-poll, Worker B resumes (t
 
     const finalContext = contextRepository.get(reservation.productionId);
     assert.equal(finalContext?.finalVideoUrl, "https://cloudinary/resumed.mp4");
+  });
+});
+
+describe("M1 — explicit smoke-test poll budget (longer than RenderOrchestrator's 3-minute default)", () => {
+  test("Veo taking longer than the old 3-minute/36-attempt default still completes when an explicit, longer poll budget is configured", async () => {
+    const { reservation, contextRepository, billingEngine } = await reserveAndSeed();
+    let checkStatusCalls = 0;
+    const provider = new ScriptedProvider({
+      checkStatus: async () => {
+        checkStatusCalls += 1;
+        // Completes on the 40th poll -- past RenderOrchestrator's own
+        // default cap of 36 attempts, so this only succeeds because the
+        // smoke test's explicit, longer budget below is actually honored.
+        if (checkStatusCalls < 40) return { jobId: "veo-op-long", status: "PROCESSING", provider: "GOOGLE" };
+        return { jobId: "veo-op-long", status: "COMPLETED", provider: "GOOGLE" };
+      },
+      download: async () => ({ jobId: "veo-op-long", status: "COMPLETED", provider: "GOOGLE", videoUrl: "https://veo-raw/v.mp4", duration: 8 }),
+    });
+    const { deps } = buildExecuteDeps({ orchestrator: buildOrchestrator(provider), billingEngine, contextRepository });
+    deps.pollOptions = { pollIntervalMs: 1, maxAttempts: 180 }; // the same 15-minute-equivalent budget veoSmokeTestWorker.js configures, scaled down in time only
+
+    const result = await executeVeoSmokeTest(reservation, deps);
+
+    assert.equal(checkStatusCalls, 40);
+    assert.equal(result.status, "COMPLETED");
+    assert.equal(billingEngine.chargeCalls.length, 1);
+  });
+
+  test("exhausting the explicit smoke-test poll budget is RECOVERY_REQUIRED, not an ordinary release-triggering FAILED", async () => {
+    const { reservation, contextRepository, billingEngine } = await reserveAndSeed();
+    const provider = new ScriptedProvider({
+      checkStatus: async () => ({ jobId: "veo-op-slow", status: "PROCESSING", provider: "GOOGLE" }),
+    });
+    const { deps } = buildExecuteDeps({ orchestrator: buildOrchestrator(provider), billingEngine, contextRepository });
+    deps.pollOptions = { pollIntervalMs: 1, maxAttempts: 5 };
+
+    const result = await executeVeoSmokeTest(reservation, deps);
+
+    assert.equal(result.status, "RECOVERY_REQUIRED");
+    assert.equal(billingEngine.releaseCalls.length, 0, "a poll-budget timeout is not a confirmed provider failure -- must not release");
+    assert.equal(billingEngine.chargeCalls.length, 0);
+    assert.equal(provider.generateCalls, 1, "the poll budget being exhausted must not cause a resubmission");
+  });
+
+  test("after a poll-budget timeout, redelivery does not resubmit or re-poll -- it returns the same RECOVERY_REQUIRED state", async () => {
+    const { reservation, contextRepository, billingEngine } = await reserveAndSeed();
+    const provider = new ScriptedProvider({
+      checkStatus: async () => ({ jobId: "veo-op-slow-2", status: "PROCESSING", provider: "GOOGLE" }),
+    });
+    const orchestrator = buildOrchestrator(provider);
+    const { deps } = buildExecuteDeps({ orchestrator, billingEngine, contextRepository });
+    deps.pollOptions = { pollIntervalMs: 1, maxAttempts: 3 };
+
+    const first = await executeVeoSmokeTest(reservation, deps);
+    assert.equal(first.status, "RECOVERY_REQUIRED");
+    assert.equal(provider.generateCalls, 1);
+    assert.equal(provider.checkStatusCalls, 3);
+
+    // Simulated BullMQ redelivery of the same job.
+    const second = await executeVeoSmokeTest(reservation, deps);
+
+    assert.equal(second.status, "RECOVERY_REQUIRED");
+    assert.equal(provider.generateCalls, 1, "redelivery after a timeout must never call generate() again");
+    assert.equal(provider.checkStatusCalls, 3, "redelivery after an already-flagged RECOVERY_REQUIRED must not poll again either");
+    assert.equal(billingEngine.releaseCalls.length, 0);
+    assert.equal(billingEngine.chargeCalls.length, 0);
+  });
+});
+
+describe("M2 — success persistence failure after confirmed billing", () => {
+  test("normal case: Veo success + Cloudinary + billing + context save all succeed -> COMPLETED (unchanged by the M2 fix)", async () => {
+    const { reservation, contextRepository: inner, billingEngine } = await reserveAndSeed();
+    const contextRepository = new FlakyContextRepository(inner, () => false);
+    const provider = new ScriptedProvider({
+      checkStatus: async () => ({ jobId: "veo-op-ok", status: "COMPLETED", provider: "GOOGLE" }),
+      download: async () => ({ jobId: "veo-op-ok", status: "COMPLETED", provider: "GOOGLE", videoUrl: "https://veo-raw/v.mp4", duration: 8, resolution: "720p" }),
+    });
+    const { deps } = buildExecuteDeps({ orchestrator: buildOrchestrator(provider), billingEngine, contextRepository });
+
+    const result = await executeVeoSmokeTest(reservation, deps);
+
+    assert.equal(result.status, "COMPLETED");
+    assert.equal(result.finalVideoUrl, "https://cloudinary/v.mp4");
+    assert.equal(billingEngine.chargeCalls.length, 1);
+    assert.equal(billingEngine.releaseCalls.length, 0);
+  });
+
+  test("a transient context-save failure that clears within the bounded retry still completes normally, without releasing the already-consumed reservation", async () => {
+    const { reservation, contextRepository: inner, billingEngine } = await reserveAndSeed();
+    // save() calls #1 (markSubmitting) and #2 (markPolling) succeed
+    // normally; the final-persistence step's first two attempts (#3, #4)
+    // fail, and the third (#5) succeeds -- within the harness's own
+    // bounded retry budget (CONTEXT_SAVE_RETRY_ATTEMPTS = 3).
+    const contextRepository = new FlakyContextRepository(inner, (n) => n === 3 || n === 4);
+    const provider = new ScriptedProvider({
+      checkStatus: async () => ({ jobId: "veo-op-flaky", status: "COMPLETED", provider: "GOOGLE" }),
+      download: async () => ({ jobId: "veo-op-flaky", status: "COMPLETED", provider: "GOOGLE", videoUrl: "https://veo-raw/v.mp4", duration: 8 }),
+    });
+    const { deps } = buildExecuteDeps({ orchestrator: buildOrchestrator(provider), billingEngine, contextRepository });
+
+    const result = await executeVeoSmokeTest(reservation, deps);
+
+    assert.equal(result.status, "COMPLETED");
+    assert.equal(result.finalVideoUrl, "https://cloudinary/v.mp4");
+    assert.equal(billingEngine.chargeCalls.length, 1);
+    assert.equal(billingEngine.releaseCalls.length, 0, "the reservation was already consumed -- a transient save failure must never trigger a release");
+    assert.equal(contextRepository.saveCalls, 5, "markSubmitting + markPolling + 3 persistSuccessResult attempts (2 failed, 1 succeeded)");
+  });
+
+  test("a sustained context-save failure (exceeds the retry budget) does not release the consumed reservation, does not call generate() again, and is reported as RECOVERY_REQUIRED with the final video URL still recoverable", async () => {
+    const { reservation, contextRepository: inner, billingEngine } = await reserveAndSeed();
+    // save() calls #1/#2 (markSubmitting/markPolling) succeed normally;
+    // every save from #3 onward (the final-persistence step, and its own
+    // best-effort RECOVERY_REQUIRED fallback save) fails -- simulating a
+    // sustained outage rather than a single transient blip.
+    const contextRepository = new FlakyContextRepository(inner, (n) => n >= 3);
+    const provider = new ScriptedProvider({
+      checkStatus: async () => ({ jobId: "veo-op-down", status: "COMPLETED", provider: "GOOGLE" }),
+      download: async () => ({ jobId: "veo-op-down", status: "COMPLETED", provider: "GOOGLE", videoUrl: "https://veo-raw/v.mp4", duration: 8, resolution: "1080p" }),
+    });
+    const { deps } = buildExecuteDeps({ orchestrator: buildOrchestrator(provider), billingEngine, contextRepository });
+
+    const result = await executeVeoSmokeTest(reservation, deps);
+
+    assert.equal(result.status, "RECOVERY_REQUIRED");
+    assert.equal(billingEngine.chargeCalls.length, 1, "billing must still have been consumed exactly once");
+    assert.equal(billingEngine.releaseCalls.length, 0, "credits already consumed must never be released just because persisting the result failed");
+    assert.equal(provider.generateCalls, 1, "a persistence failure after a confirmed successful generation must never trigger another Veo call");
+
+    // Requirement: "final video URL remains recoverable" -- even though
+    // the durable save failed, the caller (the worker, which logs this
+    // result) still has everything needed to reconcile manually.
+    assert.equal(result.finalVideoUrl, "https://cloudinary/v.mp4");
+    assert.equal(result.finalVideoMetadata?.resolution, "1080p");
+    assert.match(result.error ?? "", /billing was consumed/i);
+  });
+
+  test("upload failure (before billing) still releases normally -- the M2 fix only changes behavior after billing succeeds", async () => {
+    const { reservation, contextRepository: inner, billingEngine } = await reserveAndSeed();
+    const contextRepository = new FlakyContextRepository(inner, () => false);
+    const provider = new ScriptedProvider({
+      checkStatus: async () => ({ jobId: "veo-op-upload-fail", status: "COMPLETED", provider: "GOOGLE" }),
+      download: async () => ({ jobId: "veo-op-upload-fail", status: "COMPLETED", provider: "GOOGLE", videoUrl: "https://veo-raw/v.mp4" }),
+    });
+    const { deps } = buildExecuteDeps({
+      orchestrator: buildOrchestrator(provider),
+      billingEngine,
+      contextRepository,
+      uploadVideo: async () => {
+        throw new Error("Cloudinary upload failed");
+      },
+    });
+
+    const result = await executeVeoSmokeTest(reservation, deps);
+
+    assert.equal(result.status, "FAILED");
+    assert.equal(billingEngine.chargeCalls.length, 0, "must never charge for a generation whose upload failed");
+    assert.equal(billingEngine.releaseCalls.length, 1);
   });
 });

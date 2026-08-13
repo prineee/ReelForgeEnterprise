@@ -257,3 +257,50 @@ describe("RenderOrchestrator — providerJobId exposure and resumeJob() (durable
     await assert.rejects(() => orchestrator.checkStatus("never-submitted"));
   });
 });
+
+describe("RenderOrchestrator — pollUntilTerminal() exhausting its poll budget", () => {
+  test("exhausting maxAttempts returns FAILED with metadata.errorCode 'TIMEOUT' — an ambiguous, not confirmed, outcome", async () => {
+    let checkStatusCalls = 0;
+    const provider = new ScriptedProvider({
+      checkStatus: async () => {
+        checkStatusCalls += 1;
+        return { jobId: "veo-op-1", status: "PROCESSING", provider: "GOOGLE" };
+      },
+    });
+    const orchestrator = buildOrchestrator(provider);
+
+    const submitted = await orchestrator.render({ prompt: "test" });
+    const result = await orchestrator.pollUntilTerminal(submitted.jobId, { pollIntervalMs: 1, maxAttempts: 4 });
+
+    assert.equal(checkStatusCalls, 4, "must poll exactly maxAttempts times, no more");
+    assert.equal(result.status, "FAILED");
+    assert.equal(result.metadata?.errorCode, "TIMEOUT");
+    assert.match(result.error ?? "", /did not complete within 4 poll attempts/);
+  });
+
+  test("a long poll budget (many attempts) still only ever calls generate() once, even though it polls repeatedly", async () => {
+    let generateCalls = 0;
+    let checkStatusCalls = 0;
+    const provider = new ScriptedProvider({
+      generate: async () => {
+        generateCalls += 1;
+        return { jobId: "veo-op-2", status: "PROCESSING", provider: "GOOGLE" };
+      },
+      checkStatus: async () => {
+        checkStatusCalls += 1;
+        // Completes only on the 10th poll — simulates a real generation
+        // that takes a while but well within a generous poll budget.
+        if (checkStatusCalls < 10) return { jobId: "veo-op-2", status: "PROCESSING", provider: "GOOGLE" };
+        return { jobId: "veo-op-2", status: "COMPLETED", provider: "GOOGLE" };
+      },
+      download: async () => ({ jobId: "veo-op-2", status: "COMPLETED", provider: "GOOGLE", videoUrl: "https://example.com/v.mp4" }),
+    });
+    const orchestrator = buildOrchestrator(provider);
+
+    const result = await orchestrator.renderAndWait({ prompt: "test" }, undefined, { pollIntervalMs: 1, maxAttempts: 180 });
+
+    assert.equal(generateCalls, 1);
+    assert.equal(checkStatusCalls, 10);
+    assert.equal(result.status, "COMPLETED");
+  });
+});
