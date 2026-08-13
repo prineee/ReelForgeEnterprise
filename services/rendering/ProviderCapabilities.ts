@@ -149,15 +149,24 @@ export const PROVIDER_DESCRIPTORS: Readonly<Record<ProviderId, ProviderDescripto
     capabilities: Object.freeze({
       ...noCapabilities(),
       textToVideo: true,
-      // imageToVideo/referenceImage/firstLastFrame/extension/nativeAudio:
-      // all real Veo 3.1 capabilities, but this codebase's
-      // GoogleGenAIVeoClient (MovieProductionFactory.ts) never sends the
-      // request fields that would exercise them — see this file's header.
-      // Flip these to true only once that wiring actually exists.
+      // VGE-02: GoogleGenAIVeoClient now actually sends image/lastFrame/
+      // referenceImages/video(extension)/generateAudio to the real SDK
+      // call (see MovieProductionFactory.ts's validateVeoRequest()/
+      // toSdkAsset()) — these five flip to true as of VGE-02, reflecting
+      // real wiring, not the vendor's theoretical ceiling.
+      imageToVideo: true,
+      referenceImage: true,
+      firstLastFrame: true,
+      extension: true,
+      nativeAudio: true,
+      // cameraControl stays false: Veo has no structured camera parameter
+      // in this SDK version — camera intent only ever reaches it as
+      // prompt text (see ShotRequirementTranslator.ts), which is exactly
+      // what this flag is defined to distinguish from a real API param.
     }),
-    maxResolution: "720p",
-    supportedDurations: Object.freeze([8]),
-    supportedAspectRatios: Object.freeze(["9:16"]),
+    maxResolution: "1080p",
+    supportedDurations: Object.freeze([4, 6, 8]),
+    supportedAspectRatios: Object.freeze(["16:9", "9:16"]),
     pricing: Object.freeze({
       currency: "USD" as const,
       perSecondUsd: 0.4,

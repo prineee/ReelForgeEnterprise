@@ -37,6 +37,11 @@ export abstract class BaseVeoClientProvider implements RenderProvider {
       aspectRatio: request.aspectRatio,
       durationSeconds: request.durationSeconds,
       quality: request.quality,
+      image: request.image,
+      lastFrame: request.lastFrame,
+      referenceImages: request.referenceImages,
+      extendVideo: request.extendVideo,
+      requiresAudio: request.requiresAudio,
     });
 
     return this.toRenderResult(response);
@@ -61,6 +66,7 @@ export abstract class BaseVeoClientProvider implements RenderProvider {
       thumbnail: video?.thumbnailUrl,
       duration: video?.durationSeconds,
       resolution: video?.resolution,
+      error: response.error,
       metadata: {},
     };
   }

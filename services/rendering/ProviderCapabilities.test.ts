@@ -31,12 +31,16 @@ describe("PROVIDER_DESCRIPTORS — capability declaration", () => {
     assert.equal(ltx.capabilities.firstLastFrame, false);
   });
 
-  test("GOOGLE is declared available with textToVideo only (image-to-video not yet wired in this codebase's client)", () => {
+  test("GOOGLE is declared available with the VGE-02-wired capabilities (image/reference/firstLastFrame/extension/audio), camera control still prompt-only", () => {
     const google = PROVIDER_DESCRIPTORS.GOOGLE;
     assert.equal(google.availability, ProviderAvailabilityStatus.Available);
     assert.equal(google.capabilities.textToVideo, true);
-    assert.equal(google.capabilities.imageToVideo, false);
-    assert.equal(google.capabilities.nativeAudio, false);
+    assert.equal(google.capabilities.imageToVideo, true);
+    assert.equal(google.capabilities.referenceImage, true);
+    assert.equal(google.capabilities.firstLastFrame, true);
+    assert.equal(google.capabilities.extension, true);
+    assert.equal(google.capabilities.nativeAudio, true);
+    assert.equal(google.capabilities.cameraControl, false);
   });
 
   test("placeholder providers declare no capabilities and PLACEHOLDER availability", () => {
@@ -114,15 +118,16 @@ describe("PROVIDER_DESCRIPTORS — no mutation of provider capability definition
 
   test("attempting to mutate a capability flag does not change it", () => {
     const google = PROVIDER_DESCRIPTORS.GOOGLE;
+    const originalValue = google.capabilities.imageToVideo;
     try {
       // @ts-expect-error — intentionally violating readonly to prove the runtime freeze holds too.
-      google.capabilities.imageToVideo = true;
+      google.capabilities.imageToVideo = !originalValue;
     } catch {
       // Whether this throws depends on strict-mode context, which the test
       // runner doesn't guarantee here — the freeze's actual guarantee is
       // that the value doesn't change either way, asserted below.
     }
-    assert.equal(PROVIDER_DESCRIPTORS.GOOGLE.capabilities.imageToVideo, false);
+    assert.equal(PROVIDER_DESCRIPTORS.GOOGLE.capabilities.imageToVideo, originalValue);
   });
 
   test("attempting to add a new key to the top-level table does not change it", () => {

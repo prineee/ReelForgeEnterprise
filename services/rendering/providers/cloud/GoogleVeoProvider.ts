@@ -16,11 +16,19 @@
 import { GoogleGenAI } from "@google/genai";
 import { GoogleGenAIVeoClient } from "@/services/infrastructure/MovieProductionFactory";
 import { BaseVeoClientProvider } from "./BaseVeoClientProvider";
+import { VeoProviderError } from "./VeoProviderError";
 
 export class GoogleVeoProvider extends BaseVeoClientProvider {
   readonly name = "GOOGLE";
 
   constructor(apiKey?: string) {
-    super(new GoogleGenAIVeoClient(new GoogleGenAI({ apiKey: apiKey ?? process.env.GEMINI_API_KEY ?? "" })));
+    const resolvedKey = apiKey ?? process.env.GEMINI_API_KEY;
+    if (!resolvedKey) {
+      throw new VeoProviderError(
+        "MISSING_API_KEY",
+        "GEMINI_API_KEY is not configured — GoogleVeoProvider cannot be constructed without it."
+      );
+    }
+    super(new GoogleGenAIVeoClient(new GoogleGenAI({ apiKey: resolvedKey })));
   }
 }

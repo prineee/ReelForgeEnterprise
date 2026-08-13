@@ -69,7 +69,9 @@ import type {
   VeoRequest,
   VeoResponse,
   GeneratedVideo,
+  VeoAssetInput,
 } from "../ai/providers/google/VeoService";
+import { VeoProviderError, classifySdkError } from "../rendering/providers/cloud/VeoProviderError";
 import { LTXVideoClient } from "../ai/providers/ltx/LTXVideoClient";
 import { ElevenLabsService } from "../ai/providers/audio/ElevenLabsService";
 import type {
@@ -286,11 +288,130 @@ class GoogleGenAIImagenClient implements ImagenClient {
   }
 }
 
+// ── Veo request validation (VGE-02) ────────────────────────────────────────
+// Confirmed against the installed @google/genai v2.16.0 type definitions
+// directly (node_modules/@google/genai/dist/genai.d.ts), not vendor
+// documentation — see VGE-02's audit. Values here are what this SDK
+// version's own doc comments state as supported; if the live API's real
+// constraints differ, they will surface as an INVALID_REQUEST from the
+// API itself, wrapped by classifySdkError() below.
+const SUPPORTED_VEO_DURATIONS = [4, 6, 8] as const;
+const SUPPORTED_VEO_ASPECT_RATIOS = ["16:9", "9:16"] as const;
+const SUPPORTED_VEO_RESOLUTIONS = ["720p", "1080p"] as const;
+/** SDK doc comment for referenceImages says this limit is Veo 2's — unverified for 3.1, applied defensively since it's the only documented number available. */
+const MAX_ASSET_REFERENCE_IMAGES = 3;
+const MAX_STYLE_REFERENCE_IMAGES = 1;
+
+function validateVeoRequest(request: VeoRequest): void {
+  const duration = request.durationSeconds ?? 8;
+  if (!SUPPORTED_VEO_DURATIONS.includes(duration as (typeof SUPPORTED_VEO_DURATIONS)[number])) {
+    throw new VeoProviderError(
+      "INVALID_DURATION",
+      `Veo supports durationSeconds ${SUPPORTED_VEO_DURATIONS.join("/")} — got ${duration}.`
+    );
+  }
+
+  const aspectRatio = request.aspectRatio ?? "9:16";
+  if (!SUPPORTED_VEO_ASPECT_RATIOS.includes(aspectRatio as (typeof SUPPORTED_VEO_ASPECT_RATIOS)[number])) {
+    throw new VeoProviderError(
+      "INVALID_REQUEST",
+      `Veo supports aspectRatio ${SUPPORTED_VEO_ASPECT_RATIOS.join("/")} — got "${aspectRatio}".`
+    );
+  }
+
+  const resolution = request.quality ?? "720p";
+  if (!SUPPORTED_VEO_RESOLUTIONS.includes(resolution as (typeof SUPPORTED_VEO_RESOLUTIONS)[number])) {
+    throw new VeoProviderError(
+      "INVALID_RESOLUTION",
+      `Veo supports resolution ${SUPPORTED_VEO_RESOLUTIONS.join("/")} — got "${resolution}".`
+    );
+  }
+
+  if (request.referenceImages?.length) {
+    if (request.image || request.extendVideo || request.lastFrame) {
+      throw new VeoProviderError(
+        "INVALID_REQUEST",
+        "Veo does not support referenceImages together with image, extendVideo, or lastFrame — they are mutually exclusive."
+      );
+    }
+    const assetCount = request.referenceImages.filter((r) => r.type === "ASSET").length;
+    const styleCount = request.referenceImages.filter((r) => r.type === "STYLE").length;
+    if (assetCount > MAX_ASSET_REFERENCE_IMAGES || styleCount > MAX_STYLE_REFERENCE_IMAGES) {
+      throw new VeoProviderError(
+        "UNSUPPORTED_CAPABILITY",
+        `Veo supports up to ${MAX_ASSET_REFERENCE_IMAGES} ASSET reference images or ${MAX_STYLE_REFERENCE_IMAGES} STYLE reference image — got ${assetCount} ASSET, ${styleCount} STYLE.`
+      );
+    }
+  }
+
+  if (request.image && request.extendVideo) {
+    throw new VeoProviderError(
+      "INVALID_REQUEST",
+      "Veo does not support image and extendVideo together — video extension and image-to-video are mutually exclusive."
+    );
+  }
+
+  if (request.lastFrame && !request.image) {
+    throw new VeoProviderError(
+      "INVALID_REQUEST",
+      "Veo's lastFrame is only supported for image-to-video — request.image must also be provided."
+    );
+  }
+
+  const needsExactlyEightSeconds = Boolean(request.lastFrame) || Boolean(request.extendVideo) || resolution === "1080p";
+  if (needsExactlyEightSeconds && duration !== 8) {
+    throw new VeoProviderError(
+      "INVALID_DURATION",
+      "Veo requires durationSeconds=8 when using video extension, first/last-frame interpolation, or 1080p resolution."
+    );
+  }
+}
+
+/**
+ * Converts a provider-neutral VeoAssetInput into the SDK's Image/Video
+ * shape. The SDK only accepts a Google Cloud Storage URI (gs://...) or
+ * base64 bytes for either type — never an arbitrary HTTP(S) URL (e.g. a
+ * Cloudinary asset URL). Throws rather than silently mis-mapping a
+ * regular URL into gcsUri, which the API would reject anyway — see
+ * VGE-02's audit for why this constraint is real, not conservative
+ * guessing: it's what services/rendering/interfaces/RenderProvider.ts's
+ * RenderAssetInput and the SDK's own Image/Video types actually allow.
+ */
+function toSdkAsset(asset: VeoAssetInput | undefined, field: string): { gcsUri?: string; imageBytes?: string; videoBytes?: string; mimeType?: string } | undefined {
+  if (!asset) return undefined;
+
+  if (asset.base64) {
+    return field === "video"
+      ? { videoBytes: asset.base64, mimeType: asset.mimeType }
+      : { imageBytes: asset.base64, mimeType: asset.mimeType };
+  }
+  if (asset.url?.startsWith("gs://")) {
+    return { gcsUri: asset.url, mimeType: asset.mimeType };
+  }
+  if (asset.url) {
+    throw new VeoProviderError(
+      "UNSUPPORTED_CAPABILITY",
+      `Veo's ${field} only accepts a Google Cloud Storage URI (gs://...) or base64 bytes — "${asset.url}" is neither. ` +
+        "Download the asset and pass it as base64 instead of a plain HTTP(S) URL."
+    );
+  }
+  throw new VeoProviderError("INVALID_REQUEST", `${field} must supply either a gs:// url or base64 bytes.`);
+}
+
 /**
  * Real VeoClient backed by @google/genai's models.generateVideos() and
  * operations.getVideosOperation() — the same operation-based flow already
  * used in services/ai/gemini.ts. Feeds VeoService directly (Stage 4 of
  * MovieProductionService).
+ *
+ * VGE-02: now sends negativePrompt, image, lastFrame, referenceImages,
+ * video (extension), and generateAudio when the caller's VeoRequest
+ * provides them — previously only prompt/aspectRatio/durationSeconds
+ * reached the real API call despite negativePrompt/quality existing on
+ * VeoRequest since before this task. resolution is now derived from
+ * request.quality (reusing that existing, previously-unused field —
+ * VeoRequest has no dedicated resolution field, and adding one wasn't
+ * necessary) instead of being hardcoded to "720p".
  */
 export class GoogleGenAIVeoClient implements VeoClient {
   // getVideosOperation() calls operation._fromAPIResponse(...) internally on
@@ -304,16 +425,43 @@ export class GoogleGenAIVeoClient implements VeoClient {
   constructor(private readonly ai: GoogleGenAI) {}
 
   async generate(request: VeoRequest): Promise<VeoResponse> {
-    const operation = await this.ai.models.generateVideos({
-      model: "veo-3.1-generate-preview",
-      prompt: request.prompt,
-      config: {
-        aspectRatio: request.aspectRatio ?? "9:16",
-        durationSeconds: request.durationSeconds ?? 8,
-        resolution: "720p",
-        numberOfVideos: 1,
-      },
-    });
+    validateVeoRequest(request);
+
+    const image = toSdkAsset(request.image, "image");
+    const lastFrame = toSdkAsset(request.lastFrame, "lastFrame");
+    const video = toSdkAsset(request.extendVideo, "video");
+    const referenceImages = request.referenceImages?.map((ref) => ({
+      image: toSdkAsset(ref.asset, "referenceImages"),
+      // The SDK's VideoGenerationReferenceType is a real string enum
+      // (ASSET/STYLE), not a plain string union — our own "ASSET"|"STYLE"
+      // values already exactly match its runtime string values, so this
+      // cast reflects TS enum nominal typing, not a fabricated value.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      referenceType: ref.type as any,
+    }));
+
+    let operation;
+    try {
+      operation = await this.ai.models.generateVideos({
+        model: "veo-3.1-generate-preview",
+        prompt: request.prompt,
+        image,
+        video,
+        config: {
+          aspectRatio: request.aspectRatio ?? "9:16",
+          durationSeconds: request.durationSeconds ?? 8,
+          resolution: request.quality ?? "720p",
+          numberOfVideos: 1,
+          negativePrompt: request.negativePrompt,
+          lastFrame,
+          referenceImages,
+          generateAudio: request.requiresAudio,
+        },
+      });
+    } catch (error) {
+      throw classifySdkError(error, "GENERATION_FAILED");
+    }
+
     if (operation.name) this.operations.set(operation.name, operation);
 
     return {
@@ -323,21 +471,39 @@ export class GoogleGenAIVeoClient implements VeoClient {
   }
 
   async checkStatus(operationId: string): Promise<VeoResponse> {
-    const operation = await this.ai.operations.getVideosOperation({
-      operation: this.requireOperation(operationId),
-    });
+    let operation;
+    try {
+      operation = await this.ai.operations.getVideosOperation({
+        operation: this.requireOperation(operationId),
+      });
+    } catch (error) {
+      throw classifySdkError(error, "POLLING_FAILED");
+    }
     this.operations.set(operationId, operation);
 
-    return {
-      operationId,
-      status: !operation.done ? "PROCESSING" : operation.error ? "FAILED" : "COMPLETED",
-    };
+    if (!operation.done) {
+      return { operationId, status: "PROCESSING" };
+    }
+    if (operation.error) {
+      const message =
+        typeof operation.error === "string"
+          ? operation.error
+          : // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (operation.error as any)?.message ?? JSON.stringify(operation.error);
+      return { operationId, status: "FAILED", error: `Veo operation "${operationId}" failed: ${message}` };
+    }
+    return { operationId, status: "COMPLETED" };
   }
 
   async download(operationId: string): Promise<GeneratedVideo> {
-    const operation = await this.ai.operations.getVideosOperation({
-      operation: this.requireOperation(operationId),
-    });
+    let operation;
+    try {
+      operation = await this.ai.operations.getVideosOperation({
+        operation: this.requireOperation(operationId),
+      });
+    } catch (error) {
+      throw classifySdkError(error, "DOWNLOAD_FAILED");
+    }
     this.operations.set(operationId, operation);
 
     // The SDK's operation.response shape for video generation isn't
@@ -346,6 +512,13 @@ export class GoogleGenAIVeoClient implements VeoClient {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const response = operation.response as any;
     const videoUri: string = response?.generatedVideos?.[0]?.video?.uri ?? "";
+
+    if (!videoUri) {
+      throw new VeoProviderError(
+        "DOWNLOAD_FAILED",
+        `Veo operation "${operationId}" reported done with no error, but returned no video URI.`
+      );
+    }
 
     return { url: videoUri };
   }

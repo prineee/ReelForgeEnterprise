@@ -24,9 +24,28 @@
  */
 
 /**
+ * A single image or video asset passed by reference (a fetchable URL) or
+ * by value (base64-encoded bytes). Mirrors
+ * services/rendering/interfaces/RenderProvider.ts's RenderAssetInput —
+ * declared independently here for the same reason the rest of this file
+ * is independent of that module (see the file header).
+ */
+export interface VeoAssetInput {
+  url?: string;
+  base64?: string;
+  mimeType?: string;
+}
+
+/**
  * Request shape expected by the injected Veo client's generate() method.
  * Deliberately carries no model name — model selection is the injected
  * client's responsibility, not this service's.
+ *
+ * VGE-02 additions (image/lastFrame/extendVideo/requiresAudio): whether a
+ * given VeoClient implementation actually sends these to its underlying
+ * API is that implementation's decision — VeoService itself only
+ * transports them. A client that doesn't support one (e.g. LTXVideoClient
+ * has no image-to-video today) simply ignores the field.
  */
 export interface VeoRequest {
   prompt: string;
@@ -34,6 +53,11 @@ export interface VeoRequest {
   aspectRatio?: string;
   durationSeconds?: number;
   quality?: string;
+  image?: VeoAssetInput;
+  lastFrame?: VeoAssetInput;
+  referenceImages?: { asset: VeoAssetInput; type: "ASSET" | "STYLE" }[];
+  extendVideo?: VeoAssetInput;
+  requiresAudio?: boolean;
 }
 
 /**
@@ -71,6 +95,8 @@ export interface VeoResponse {
   operationId: string;
   status: VeoGenerationStatus;
   usage?: VeoUsage;
+  /** Present when status is FAILED and the client has a real error message to report — see GoogleGenAIVeoClient.checkStatus() (VGE-02). Previously a FAILED status carried no explanation anywhere in this chain. */
+  error?: string;
 }
 
 /**
