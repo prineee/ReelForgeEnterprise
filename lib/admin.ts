@@ -15,9 +15,17 @@ export type AdminCheckResult =
  * Usage in an API route:
  *   const check = await requireAdmin()
  *   if (!check.ok) return check.response
+ *
+ * `client`, if supplied, is used instead of the real cookie-based
+ * createClient() — the real client depends on next/headers' cookies(),
+ * which requires an actual Next.js request context and can't run under a
+ * plain node:test script. Every existing caller omits this param, so
+ * behavior for all six current app/api/admin/** routes is unchanged;
+ * this exists solely so requireAdmin()'s own authorization decision
+ * (authenticated? admin? neither?) can be unit-tested with a fake client.
  */
-export async function requireAdmin(): Promise<AdminCheckResult> {
-  const supabase = await createClient()
+export async function requireAdmin(client?: Awaited<ReturnType<typeof createClient>>): Promise<AdminCheckResult> {
+  const supabase = client ?? await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
   if (!user) {

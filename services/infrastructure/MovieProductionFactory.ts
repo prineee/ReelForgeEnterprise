@@ -605,8 +605,13 @@ class GoogleGenAIVideoClient implements GoogleVideoClient {
  * Real StorageClient backed by the cloudinary SDK, using the same
  * cloudinary.config()/uploader.upload() pattern already used in
  * app/api/cinema/generate/route.ts.
+ *
+ * Exported (like GoogleGenAIVeoClient above) so a caller that needs real
+ * Cloudinary upload without constructing a full MovieProductionService
+ * can reuse this exact adapter instead of writing a second one — see
+ * app/api/internal/veo-smoke-test/route.ts.
  */
-class CloudinaryStorageClient implements StorageClient {
+export class CloudinaryStorageClient implements StorageClient {
   constructor(cloudName: string, apiKey: string, apiSecret: string) {
     cloudinary.config({
       cloud_name: cloudName,
