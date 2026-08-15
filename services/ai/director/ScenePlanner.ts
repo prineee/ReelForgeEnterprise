@@ -108,21 +108,127 @@ export class ScenePlanner {
   ): Promise<Scene[]> {
     const sceneNumbers = this.validateInputs(characters, environments, cameraPlans, emotionPlans);
 
-    const prompt = this.buildPrompt(story, characters, environments, sceneNumbers);
-    const rawResponse = await this.provider.generate(prompt);
-
-    const scenes = this.parseResponse(
-      rawResponse,
-      sceneNumbers,
+    const scenes = await this.generateAndParseWithRetry(
+      story,
       characters,
       environments,
       cameraPlans,
-      emotionPlans
+      emotionPlans,
+      sceneNumbers
     );
 
     this.validateCoverage(scenes, characters, environments);
 
     return scenes;
+  }
+
+  /**
+   * Calls the language model and parses its response, with at most one
+   * bounded retry (2 attempts total) reserved specifically for a recoverable
+   * "characterIds" formatting/omission failure — the production failure
+   * mode observed for fa1c3b2c-4991-40fe-a075-10d2ed7c0082, where Gemini
+   * returned an otherwise well-formed scene missing/malformed the
+   * "characterIds" field. Any other parse failure (bad JSON, wrong scene
+   * count, unknown environmentId, etc.) still fails on the first attempt —
+   * this does not become a general-purpose retry loop. The retry prompt
+   * re-sends the original instructions plus the exact rejection reason and
+   * the known character id list, so the model corrects itself rather than
+   * this code inventing or guessing ids. If the retry's response is still
+   * invalid (for any reason, including a different field now being wrong),
+   * this fails normally with a diagnostic error — no third attempt.
+   */
+  private async generateAndParseWithRetry(
+    story: StoryBlueprint,
+    characters: Character[],
+    environments: Environment[],
+    cameraPlans: CameraPlan[],
+    emotionPlans: EmotionPlan[],
+    sceneNumbers: number[]
+  ): Promise<Scene[]> {
+    const prompt = this.buildPrompt(story, characters, environments, sceneNumbers);
+    const firstResponse = await this.provider.generate(prompt);
+
+    try {
+      return this.parseResponse(
+        firstResponse,
+        sceneNumbers,
+        characters,
+        environments,
+        cameraPlans,
+        emotionPlans
+      );
+    } catch (error) {
+      if (!this.isRecoverableCharacterIdsError(error)) {
+        throw error;
+      }
+
+      const retryPrompt = this.buildCharacterIdsRetryPrompt(prompt, characters, error);
+      const secondResponse = await this.provider.generate(retryPrompt);
+
+      try {
+        return this.parseResponse(
+          secondResponse,
+          sceneNumbers,
+          characters,
+          environments,
+          cameraPlans,
+          emotionPlans
+        );
+      } catch (retryError) {
+        const retryMessage = retryError instanceof Error ? retryError.message : String(retryError);
+        throw new ScenePlannerParseError(
+          `ScenePlanner response was still invalid after one retry for a recoverable ` +
+            `"characterIds" formatting issue: ${retryMessage}`,
+          secondResponse
+        );
+      }
+    }
+  }
+
+  /**
+   * True only for the specific characterIds validation failures thrown by
+   * expectCharacterIdArray() below — not for any other ScenePlannerParseError
+   * (malformed JSON, missing scenes, unknown environmentId, etc.), which
+   * must keep failing on the first attempt.
+   */
+  private isRecoverableCharacterIdsError(error: unknown): boolean {
+    if (!(error instanceof ScenePlannerParseError)) return false;
+    return (
+      error.message === 'Missing or invalid "characterIds" field.' ||
+      error.message === "Duplicate characterId within a single scene." ||
+      error.message.startsWith("Unknown characterId referenced:")
+    );
+  }
+
+  /**
+   * Reinforces the original prompt with the exact rejection reason and the
+   * known character id list, verbatim, so the model corrects its own
+   * response rather than this code fabricating or randomly assigning ids.
+   */
+  private buildCharacterIdsRetryPrompt(
+    originalPrompt: string,
+    characters: Character[],
+    error: unknown
+  ): string {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const characterLines = characters
+      .map((c) => `  - id: "${c.id}", name: "${c.name}"`)
+      .join("\n");
+
+    return [
+      originalPrompt,
+      "",
+      "IMPORTANT — your previous response was rejected:",
+      `  ${errorMessage}`,
+      "",
+      'Every scene\'s "characterIds" field is REQUIRED and MUST be a',
+      "non-empty array of strings, where EACH string is EXACTLY one of",
+      "these known character ids (copy them verbatim — do not invent new",
+      "ids and do not leave any scene's characterIds empty):",
+      characterLines,
+      "",
+      "Respond again with ONLY the corrected single valid JSON object — no markdown, no commentary.",
+    ].join("\n");
   }
 
   /**
